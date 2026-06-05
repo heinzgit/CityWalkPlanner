@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Folder {
+  id        String      @id @default(cuid()) @db.VarChar(191)
+  name      String      @db.VarChar(120)
+  parentId  String?     @db.VarChar(191)
+  isVisible Boolean     @default(true)
+  sortOrder Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  parent    Folder?     @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[]    @relation("FolderHierarchy")
+  routes    RoutePlan[]
+
+  @@index([parentId])
+  @@map("folders")
+}
+
+model RoutePlan {
+  id          String       @id @default(cuid()) @db.VarChar(191)
+  folderId    String?      @db.VarChar(191)
+  name        String       @db.VarChar(120)
+  description String?      @db.Text
+  color       String       @default("#1677ff") @db.VarChar(16)
+  isVisible   Boolean      @default(true)
+  pointsJson  Json?
+  mapLng      Float?
+  mapLat      Float?
+  mapZoom     Float?
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  folder      Folder?      @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  points      RoutePoint[]
+
+  @@index([folderId])
+  @@map("route_plans")
+}
+
+model RoutePoint {
+  id          String    @id @default(cuid()) @db.VarChar(191)
+  routePlanId String    @db.VarChar(191)
+  lng         Float
+  lat         Float
+  name        String?   @db.VarChar(120)
+  note        String?   @db.Text
+  orderIndex  Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  routePlan   RoutePlan @relation(fields: [routePlanId], references: [id], onDelete: Cascade)
+
+  @@index([routePlanId, orderIndex])
+  @@map("route_points")
+}
