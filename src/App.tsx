@@ -10,7 +10,7 @@ import {
   Folder,
   FolderPlus,
   PanelLeftClose,
-  PanelLeftOpen,
+  PanelRightClose,
   LocateFixed,
   Minus,
   Plus,
@@ -250,6 +250,7 @@ export function App() {
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
   const [sidebarWidth, setSidebarWidth] = useState(340);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isDetailsCollapsed, setIsDetailsCollapsed] = useState(false);
   const [mapStatus, setMapStatus] = useState("正在加载地图");
   const [isMapReady, setIsMapReady] = useState(false);
   const [dataStatus, setDataStatus] = useState("正在加载路线");
@@ -646,7 +647,9 @@ export function App() {
 
   return (
     <main
-      className={`app-shell ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}
+      className={`app-shell ${isSidebarCollapsed ? "sidebar-collapsed" : ""} ${
+        isDetailsCollapsed ? "details-collapsed" : ""
+      }`}
       style={{ "--sidebar-width": `${isSidebarCollapsed ? 0 : sidebarWidth}px` } as CSSProperties}
     >
       <aside className="sidebar" aria-hidden={isSidebarCollapsed}>
@@ -702,13 +705,27 @@ export function App() {
 
       <section className="map-stage">
         <div ref={mapContainerRef} className="map-canvas" />
+        {isSidebarCollapsed ? (
+          <button
+            className="panel-tab panel-tab-left"
+            type="button"
+            title="显示路线列表"
+            onClick={() => setIsSidebarCollapsed(false)}
+          >
+            路线列表
+          </button>
+        ) : null}
+        {isDetailsCollapsed ? (
+          <button
+            className="panel-tab panel-tab-right"
+            type="button"
+            title="显示路线详情"
+            onClick={() => setIsDetailsCollapsed(false)}
+          >
+            路线详情
+          </button>
+        ) : null}
         <div className="map-toolbar">
-          {isSidebarCollapsed ? (
-            <button type="button" onClick={() => setIsSidebarCollapsed(false)}>
-              <PanelLeftOpen size={16} />
-              左边栏
-            </button>
-          ) : null}
           <span>{mapStatus}</span>
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />
@@ -719,7 +736,7 @@ export function App() {
         {error ? <div className="error-banner">{error}</div> : null}
       </section>
 
-      <aside className="details">
+      <aside className="details" aria-hidden={isDetailsCollapsed}>
         {selectedRoute ? (
           <>
             <header className="panel-header">
@@ -731,6 +748,9 @@ export function App() {
                 </p>
               </div>
               <div className="detail-actions">
+                <button className="icon-button" type="button" title="隐藏右边栏" onClick={() => setIsDetailsCollapsed(true)}>
+                  <PanelRightClose size={16} />
+                </button>
                 <button className="icon-button" type="button" title="复制路线" onClick={copySelectedRoute}>
                   <Copy size={16} />
                 </button>
@@ -790,6 +810,9 @@ export function App() {
           </>
         ) : (
           <div className="empty-state">
+            <button className="icon-button details-empty-toggle" type="button" title="隐藏右边栏" onClick={() => setIsDetailsCollapsed(true)}>
+              <PanelRightClose size={16} />
+            </button>
             <Route size={28} />
             <h2>选择或创建一条路线</h2>
             <p>显示状态开启的路线会一起绘制在地图上。</p>
