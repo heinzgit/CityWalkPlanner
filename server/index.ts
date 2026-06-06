@@ -195,6 +195,33 @@ app.get("/api/routes/:id", async (req, res, next) => {
   }
 });
 
+app.patch("/api/routes/reorder", async (req, res, next) => {
+  try {
+    const input = z
+      .object({
+        folderId: optionalIdSchema,
+        routeIds: z.array(idSchema).min(1)
+      })
+      .parse(req.body);
+
+    const updatedRoutes = await prisma.$transaction(
+      input.routeIds.map((routeId, index) =>
+        prisma.routePlan.update({
+          where: { id: routeId },
+          data: {
+            folderId: input.folderId ?? null,
+            sortOrder: index
+          }
+        })
+      )
+    );
+
+    res.json(updatedRoutes.map(serializeRoute));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.patch("/api/routes/:id", async (req, res, next) => {
   try {
     const id = idSchema.parse(req.params.id);

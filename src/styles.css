@@ -29,9 +29,13 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(260px, 300px) minmax(420px, 1fr) minmax(300px, 360px);
+  grid-template-columns: var(--sidebar-width, 340px) 6px minmax(420px, 1fr) minmax(300px, 360px);
   height: 100vh;
   overflow: hidden;
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 0 minmax(420px, 1fr) minmax(300px, 360px);
 }
 
 .sidebar,
@@ -45,6 +49,22 @@ button {
 
 .sidebar {
   border-right: 1px solid #dce3ee;
+  overflow: hidden;
+}
+
+.sidebar[aria-hidden="true"] {
+  border-right: 0;
+  visibility: hidden;
+}
+
+.sidebar-resizer {
+  cursor: col-resize;
+  background: #f1f4f8;
+  border-right: 1px solid #dce3ee;
+}
+
+.sidebar-resizer:hover {
+  background: #cfe0fb;
 }
 
 .details {
@@ -99,9 +119,38 @@ button {
   color: #2c3642;
 }
 
+.tree-row .icon-button:not(.visibility):not(.disclosure):not(.danger),
+.tree-row .tree-spacer {
+  opacity: 0;
+}
+
+.tree-row:hover .icon-button,
+.tree-row.selected .icon-button,
+.tree-row:hover .tree-spacer,
+.tree-row.selected .tree-spacer {
+  opacity: 1;
+}
+
 .tree-row:hover,
 .tree-row.selected {
   background: #eef5ff;
+}
+
+.tree-row.dragging {
+  opacity: 0.45;
+}
+
+.tree-row.drop-inside {
+  background: #e9f8ef;
+  outline: 1px solid #79c99a;
+}
+
+.tree-row.drop-before {
+  box-shadow: inset 0 2px 0 #1167d8;
+}
+
+.tree-row.drop-after {
+  box-shadow: inset 0 -2px 0 #1167d8;
 }
 
 .tree-spacer {
@@ -189,6 +238,7 @@ button {
   position: absolute;
   top: 14px;
   left: 14px;
+  z-index: 50;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -414,6 +464,19 @@ button {
     height: auto;
     min-height: 100vh;
     overflow: visible;
+  }
+
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(380px, 1fr) 360px;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar {
+    display: none;
+  }
+
+  .sidebar-resizer {
+    display: none;
   }
 
   .sidebar,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -8,6 +9,8 @@ import {
   EyeOff,
   Folder,
   FolderPlus,
+  PanelLeftClose,
+  PanelLeftOpen,
   LocateFixed,
   Minus,
   Plus,
@@ -38,6 +41,10 @@ type OverlayBundle = {
   polyline: BMapGL.Polyline;
   markers: BMapGL.Marker[];
 };
+
+type RouteDropTarget =
+  | { type: "folder"; folderId: string | null }
+  | { type: "route"; folderId: string | null; routeId: string; position: "before" | "after" };
 
 function visibilityIcon(state: VisibilityState) {
   if (state === "visible") return <Eye size={16} />;
@@ -85,6 +92,12 @@ function TreeView({
   onDeleteRoute,
   expandedFolderIds,
   onToggleFolderExpanded,
+  draggedRouteId,
+  dropTarget,
+  onRouteDragStart,
+  onRouteDragEnd,
+  onRouteDropTarget,
+  onRouteDrop,
   level = 0
 }: {
   nodes: TreeNode[];
@@ -97,6 +110,12 @@ function TreeView({
   onDeleteRoute: (routeId: string) => void;
   expandedFolderIds: Set<string>;
   onToggleFolderExpanded: (folderId: string) => void;
+  draggedRouteId: string | null;
+  dropTarget: RouteDropTarget | null;
+  onRouteDragStart: (routeId: string) => void;
+  onRouteDragEnd: () => void;
+  onRouteDropTarget: (target: RouteDropTarget | null) => void;
+  onRouteDrop: (routeId: string, target: RouteDropTarget) => void;
   level?: number;
 }) {
   return (
@@ -104,8 +123,46 @@ function TreeView({
       {nodes.map((node) => (
         <div key={`${node.type}-${node.id}`}>
           <div
-            className={`tree-row ${node.type === "route" && node.id === selectedRouteId ? "selected" : ""}`}
+            className={`tree-row ${node.type === "route" && node.id === selectedRouteId ? "selected" : ""} ${
+              node.type === "route" && draggedRouteId === node.id ? "dragging" : ""
+            } ${
+              node.type === "folder" && dropTarget?.type === "folder" && dropTarget.folderId === node.id ? "drop-inside" : ""
+            } ${
+              node.type === "route" && dropTarget?.type === "route" && dropTarget.routeId === node.id
+                ? `drop-${dropTarget.position}`
+                : ""
+            }`}
             style={{ paddingLeft: 10 + level * 18 }}
+            draggable={node.type === "route"}
+            onDragStart={(event) => {
+              if (node.type !== "route") return;
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", node.id);
+              onRouteDragStart(node.id);
+            }}
+            onDragEnd={onRouteDragEnd}
+            onDragOver={(event) => {
+              if (!draggedRouteId || (node.type === "route" && node.id === draggedRouteId)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              if (node.type === "folder") {
+                onRouteDropTarget({ type: "folder", folderId: node.id });
+                return;
+              }
+              const rect = event.currentTarget.getBoundingClientRect();
+              onRouteDropTarget({
+                type: "route",
+                folderId: node.folderId,
+                routeId: node.id,
+                position: event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+              });
+            }}
+            onDrop={(event) => {
+              if (!dropTarget) return;
+              event.preventDefault();
+              const routeId = event.dataTransfer.getData("text/plain") || draggedRouteId;
+              if (routeId) onRouteDrop(routeId, dropTarget);
+            }}
           >
             {node.type === "folder" ? (
               <button
@@ -171,6 +228,12 @@ function TreeView({
               onDeleteRoute={onDeleteRoute}
               expandedFolderIds={expandedFolderIds}
               onToggleFolderExpanded={onToggleFolderExpanded}
+              draggedRouteId={draggedRouteId}
+              dropTarget={dropTarget}
+              onRouteDragStart={onRouteDragStart}
+              onRouteDragEnd={onRouteDragEnd}
+              onRouteDropTarget={onRouteDropTarget}
+              onRouteDrop={onRouteDrop}
               level={level + 1}
             />
           ) : null}
@@ -185,11 +248,15 @@ export function App() {
   const [folders, setFolders] = useState<Awaited<ReturnType<typeof api.getTree>>["folders"]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
+  const [sidebarWidth, setSidebarWidth] = useState(340);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [mapStatus, setMapStatus] = useState("正在加载地图");
   const [isMapReady, setIsMapReady] = useState(false);
   const [dataStatus, setDataStatus] = useState("正在加载路线");
   const [routeMode, setRouteMode] = useState<RouteMode>("view");
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
+  const [draggedRouteId, setDraggedRouteId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<RouteDropTarget | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -251,6 +318,60 @@ export function App() {
       return next;
     });
   }, []);
+
+  const reorderRoute = useCallback(
+    async (draggedId: string, target: RouteDropTarget) => {
+      const draggedRoute = routesRef.current.find((route) => route.id === draggedId);
+      if (!draggedRoute) return;
+
+      const targetFolderId = target.type === "folder" ? target.folderId : target.folderId;
+      const siblings = routesRef.current
+        .filter((route) => route.folderId === targetFolderId && route.id !== draggedId)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "zh-CN"));
+
+      let insertIndex = siblings.length;
+      if (target.type === "route") {
+        const targetIndex = siblings.findIndex((route) => route.id === target.routeId);
+        if (targetIndex >= 0) {
+          insertIndex = target.position === "before" ? targetIndex : targetIndex + 1;
+        }
+      }
+
+      const nextSiblings = [...siblings];
+      nextSiblings.splice(insertIndex, 0, { ...draggedRoute, folderId: targetFolderId });
+      const nextIds = nextSiblings.map((route) => route.id);
+
+      setRoutes((currentRoutes) =>
+        currentRoutes.map((route) => {
+          const nextIndex = nextIds.indexOf(route.id);
+          if (nextIndex < 0) return route;
+          return { ...route, folderId: targetFolderId, sortOrder: nextIndex };
+        })
+      );
+      setDropTarget(null);
+      setDraggedRouteId(null);
+      await api.reorderRoutes({ folderId: targetFolderId, routeIds: nextIds });
+      await refreshTree();
+    },
+    [refreshTree]
+  );
+
+  const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      setSidebarWidth(Math.min(520, Math.max(260, startWidth + moveEvent.clientX - startX)));
+    };
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }, [sidebarWidth]);
 
   useEffect(() => {
     refreshTree().catch((caught) => {
@@ -319,6 +440,18 @@ export function App() {
           strokeWeight: route.id === selectedRouteId ? 7 : 5,
           strokeOpacity: route.id === selectedRouteId ? 0.95 : 0.72
         });
+        polyline.addEventListener("click", () => {
+          if (skipNextMapClickRef.current) return;
+          skipNextMapClickRef.current = true;
+          window.setTimeout(() => {
+            skipNextMapClickRef.current = false;
+          }, 0);
+          setSelectedRouteId(route.id);
+          setSelectedPointIndex(null);
+          if (route.id !== selectedRouteId) {
+            setRouteMode("view");
+          }
+        });
         const canEditMarkers = route.id === selectedRouteId && routeMode === "edit";
         const pointIcon = new BMap.Icon(editPointIcon, new BMap.Size(14, 14), {
           anchor: new BMap.Size(7, 7),
@@ -337,10 +470,16 @@ export function App() {
           if (canEditMarkers) {
             marker.addEventListener("click", () => {
               skipNextMapClickRef.current = true;
+              window.setTimeout(() => {
+                skipNextMapClickRef.current = false;
+              }, 0);
               setSelectedPointIndex(index);
             });
             marker.addEventListener("rightclick", () => {
               skipNextMapClickRef.current = true;
+              window.setTimeout(() => {
+                skipNextMapClickRef.current = false;
+              }, 0);
               setSelectedPointIndex((current) => {
                 if (current === null) return null;
                 if (current === index) return null;
@@ -506,14 +645,20 @@ export function App() {
   };
 
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
+    <main
+      className={`app-shell ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}
+      style={{ "--sidebar-width": `${isSidebarCollapsed ? 0 : sidebarWidth}px` } as CSSProperties}
+    >
+      <aside className="sidebar" aria-hidden={isSidebarCollapsed}>
         <header className="panel-header">
           <div>
             <h1>CityWalk Planner</h1>
             <p>{dataStatus}</p>
           </div>
           <div className="header-actions">
+            <button className="icon-button" type="button" title="隐藏左边栏" onClick={() => setIsSidebarCollapsed(true)}>
+              <PanelLeftClose size={17} />
+            </button>
             <button className="icon-button primary" type="button" title="新建根文件夹" onClick={() => createFolder(null)}>
               <FolderPlus size={17} />
             </button>
@@ -537,12 +682,33 @@ export function App() {
           onDeleteRoute={deleteRoute}
           expandedFolderIds={expandedFolderIds}
           onToggleFolderExpanded={toggleFolderExpanded}
+          draggedRouteId={draggedRouteId}
+          dropTarget={dropTarget}
+          onRouteDragStart={setDraggedRouteId}
+          onRouteDragEnd={() => {
+            setDraggedRouteId(null);
+            setDropTarget(null);
+          }}
+          onRouteDropTarget={setDropTarget}
+          onRouteDrop={(routeId, target) => {
+            reorderRoute(routeId, target).catch((caught) => {
+              setError(caught instanceof Error ? caught.message : "移动路线失败");
+              refreshTree();
+            });
+          }}
         />
       </aside>
+      {!isSidebarCollapsed ? <div className="sidebar-resizer" role="separator" onPointerDown={startSidebarResize} /> : null}
 
       <section className="map-stage">
         <div ref={mapContainerRef} className="map-canvas" />
         <div className="map-toolbar">
+          {isSidebarCollapsed ? (
+            <button type="button" onClick={() => setIsSidebarCollapsed(false)}>
+              <PanelLeftOpen size={16} />
+              左边栏
+            </button>
+          ) : null}
           <span>{mapStatus}</span>
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />

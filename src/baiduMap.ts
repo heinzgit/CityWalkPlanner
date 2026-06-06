@@ -36,6 +36,7 @@ declare global {
       constructor(points: Point[], options?: PolylineOptions);
       setStrokeColor(color: string): void;
       setStrokeWeight(weight: number): void;
+      addEventListener(event: string, handler: (event: MapMouseEvent) => void): void;
     }
 
     class Marker implements Overlay {

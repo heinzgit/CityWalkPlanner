@@ -43,9 +43,14 @@ export const api = {
     }),
   updateRoute: (
     id: string,
-    payload: Partial<Pick<RoutePlan, "name" | "folderId" | "description" | "color" | "mapLng" | "mapLat" | "mapZoom">>
+    payload: Partial<Pick<RoutePlan, "name" | "folderId" | "description" | "color" | "mapLng" | "mapLat" | "mapZoom" | "sortOrder">>
   ) =>
     request<RoutePlan>(`/api/routes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  reorderRoutes: (payload: { folderId: string | null; routeIds: string[] }) =>
+    request<RoutePlan[]>("/api/routes/reorder", {
       method: "PATCH",
       body: JSON.stringify(payload)
     }),
