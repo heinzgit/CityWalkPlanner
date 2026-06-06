@@ -1,8 +1,6 @@
-import type { WalkPoint } from "../types";
-
 const minDistanceMeters = 5;
 
-export function distanceMeters(a: Pick<WalkPoint, "lng" | "lat">, b: Pick<WalkPoint, "lng" | "lat">) {
+function distanceMeters(a, b) {
   const earthRadius = 6371000;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;
@@ -15,10 +13,13 @@ export function distanceMeters(a: Pick<WalkPoint, "lng" | "lat">, b: Pick<WalkPo
   return earthRadius * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-export function shouldAppendTrackPoint(points: WalkPoint[], nextPoint: WalkPoint) {
+function shouldAppendTrackPoint(points, nextPoint) {
   const previous = points[points.length - 1];
   if (!previous) return true;
   if (nextPoint.accuracy !== undefined && nextPoint.accuracy > 80) return false;
 
   return distanceMeters(previous, nextPoint) >= minDistanceMeters;
 }
+
+module.exports = { distanceMeters, shouldAppendTrackPoint };
+

@@ -47,7 +47,7 @@ type RoutePlan = {
 - 小程序实时画线时使用 GCJ-02 原始定位点。
 - 小程序保存为 route plan 前，把 GCJ-02 转成 BD-09，保证 Web 百度地图展示不偏移。
 
-当前目录里已经提供 `utils/coord.ts`：
+当前目录里已经提供 `utils/coord.js`：
 
 - BD-09 -> GCJ-02：小程序展示已有路线。
 - GCJ-02 -> BD-09：小程序保存实际 walk 为新路线。

@@ -9,6 +9,7 @@ dotenv.config();
 const prisma = new PrismaClient();
 const app = express();
 const port = Number(process.env.PORT ?? 43101);
+const host = process.env.HOST ?? "0.0.0.0";
 
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
@@ -369,6 +370,6 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   res.status(statusCode).json({ message: error instanceof Error ? error.message : "Internal server error" });
 });
 
-app.listen(port, () => {
-  console.log(`CityWalk Planner API listening on http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`CityWalk Planner API listening on http://${host}:${port}`);
 });

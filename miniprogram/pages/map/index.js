@@ -1,9 +1,6 @@
-import { api } from "../../services/api";
-import type { RoutePlan, WalkPoint } from "../../types";
-import { bd09ToGcj02, gcj02ToBd09, toMapPoint } from "../../utils/coord";
-import { shouldAppendTrackPoint } from "../../utils/track";
-
-type Polyline = WechatMiniprogram.MapProps["polyline"][number];
+const { api } = require("../../services/api");
+const { bd09ToGcj02, gcj02ToBd09, toMapPoint } = require("../../utils/coord");
+const { shouldAppendTrackPoint } = require("../../utils/track");
 
 const shanghai = {
   longitude: 121.4737,
@@ -14,16 +11,17 @@ Page({
   data: {
     center: shanghai,
     scale: 14,
-    routes: [] as RoutePlan[],
-    selectedRouteId: "" as string,
+    routes: [],
+    selectedRouteId: "",
+    shouldShowLocation: false,
     isRecording: false,
     isSavingWalk: false,
     isWalkDialogVisible: false,
     walkName: "",
     walkDescription: "",
-    trackPoints: [] as WalkPoint[],
-    polylines: [] as Polyline[],
-    markers: [] as WechatMiniprogram.MapProps["markers"]
+    trackPoints: [],
+    polylines: [],
+    markers: []
   },
 
   onLoad() {
@@ -43,17 +41,18 @@ Page({
       this.setData(
         {
           routes,
-          selectedRouteId: routes[0]?.id ?? ""
+          selectedRouteId: routes[0]?.id || ""
         },
         () => this.renderPolylines()
       );
     } catch (error) {
+      console.error("[map] load routes failed", error);
       wx.showToast({ title: "路线加载失败", icon: "none" });
     }
   },
 
-  selectRoute(event: WechatMiniprogram.TouchEvent) {
-    const routeId = event.currentTarget.dataset.routeId as string;
+  selectRoute(event) {
+    const routeId = event.currentTarget.dataset.routeId;
     this.setData({ selectedRouteId: routeId }, () => {
       this.renderPolylines();
       this.fitSelectedRoute();
@@ -61,7 +60,7 @@ Page({
   },
 
   renderPolylines() {
-    const routeLines: Polyline[] = this.data.routes
+    const routeLines = this.data.routes
       .filter((route) => route.points.length > 0)
       .map((route) => ({
         points: route.points.map((point) => toMapPoint(bd09ToGcj02(point))),
@@ -71,7 +70,7 @@ Page({
         arrowLine: false
       }));
 
-    const trackLine: Polyline | null =
+    const trackLine =
       this.data.trackPoints.length > 1
         ? {
             points: this.data.trackPoints.map(toMapPoint),
@@ -107,10 +106,14 @@ Page({
             longitude: location.longitude,
             latitude: location.latitude
           },
+          shouldShowLocation: true,
           scale: 17
         });
       },
-      fail: () => wx.showToast({ title: "无法获取定位", icon: "none" })
+      fail: (error) => {
+        console.error("[map] get location failed", error);
+        wx.showToast({ title: "无法获取定位", icon: "none" });
+      }
     });
   },
 
@@ -118,9 +121,12 @@ Page({
     wx.startLocationUpdate({
       success: () => {
         wx.onLocationChange(this.handleLocationChange);
-        this.setData({ isRecording: true, trackPoints: [] }, () => this.renderPolylines());
+        this.setData({ isRecording: true, shouldShowLocation: true, trackPoints: [] }, () => this.renderPolylines());
       },
-      fail: () => wx.showToast({ title: "定位权限未开启", icon: "none" })
+      fail: (error) => {
+        console.error("[map] start location update failed", error);
+        wx.showToast({ title: "定位权限未开启", icon: "none" });
+      }
     });
   },
 
@@ -142,19 +148,22 @@ Page({
   },
 
   cancelWalkSave() {
-    this.setData({
-      isWalkDialogVisible: false,
-      walkName: "",
-      walkDescription: "",
-      trackPoints: []
-    }, () => this.renderPolylines());
+    this.setData(
+      {
+        isWalkDialogVisible: false,
+        walkName: "",
+        walkDescription: "",
+        trackPoints: []
+      },
+      () => this.renderPolylines()
+    );
   },
 
-  updateWalkName(event: WechatMiniprogram.Input) {
+  updateWalkName(event) {
     this.setData({ walkName: event.detail.value });
   },
 
-  updateWalkDescription(event: WechatMiniprogram.Input) {
+  updateWalkDescription(event) {
     this.setData({ walkDescription: event.detail.value });
   },
 
@@ -199,8 +208,8 @@ Page({
       });
   },
 
-  handleLocationChange(location: WechatMiniprogram.OnLocationChangeCallbackResult) {
-    const nextPoint: WalkPoint = {
+  handleLocationChange(location) {
+    const nextPoint = {
       lng: location.longitude,
       lat: location.latitude,
       accuracy: location.accuracy,

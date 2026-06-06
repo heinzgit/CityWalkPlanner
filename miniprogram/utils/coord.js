@@ -1,8 +1,6 @@
-import type { LngLat } from "../types";
-
 const xPi = (Math.PI * 3000.0) / 180.0;
 
-export function bd09ToGcj02(point: LngLat): LngLat {
+function bd09ToGcj02(point) {
   const x = point.lng - 0.0065;
   const y = point.lat - 0.006;
   const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * xPi);
@@ -14,7 +12,7 @@ export function bd09ToGcj02(point: LngLat): LngLat {
   };
 }
 
-export function gcj02ToBd09(point: LngLat): LngLat {
+function gcj02ToBd09(point) {
   const z = Math.sqrt(point.lng * point.lng + point.lat * point.lat) + 0.00002 * Math.sin(point.lat * xPi);
   const theta = Math.atan2(point.lat, point.lng) + 0.000003 * Math.cos(point.lng * xPi);
 
@@ -24,9 +22,12 @@ export function gcj02ToBd09(point: LngLat): LngLat {
   };
 }
 
-export function toMapPoint(point: LngLat) {
+function toMapPoint(point) {
   return {
     longitude: point.lng,
     latitude: point.lat
   };
 }
+
+module.exports = { bd09ToGcj02, gcj02ToBd09, toMapPoint };
+

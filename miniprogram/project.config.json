@@ -1,7 +1,7 @@
 {
   "appid": "wx67a0fcda1ea68fa1",
   "compileType": "miniprogram",
-  "libVersion": "latest",
+  "libVersion": "3.7.12",
   "projectname": "CityWalkPlanner",
   "setting": {
     "es6": true,
