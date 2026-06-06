@@ -177,6 +177,34 @@ app.post("/api/routes", async (req, res, next) => {
   }
 });
 
+app.post("/api/routes/from-walk", async (req, res, next) => {
+  try {
+    const input = z
+      .object({
+        name: nameSchema,
+        description: z.string().nullable().optional(),
+        folderId: optionalIdSchema,
+        color: colorSchema.optional(),
+        points: z.array(routePointSchema).min(2)
+      })
+      .parse(req.body);
+
+    const route = await prisma.routePlan.create({
+      data: {
+        name: input.name,
+        description: input.description ?? null,
+        folderId: input.folderId ?? null,
+        color: input.color ?? "#f59e0b",
+        pointsJson: input.points
+      }
+    });
+
+    res.status(201).json(serializeRoute(route));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/routes/:id", async (req, res, next) => {
   try {
     const id = idSchema.parse(req.params.id);

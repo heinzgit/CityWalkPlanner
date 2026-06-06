@@ -1,0 +1,23 @@
+{
+  "pages": [
+    "pages/map/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "CityWalk",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f7fb"
+  },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于在地图上显示当前位置，并记录实际步行轨迹"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation",
+    "startLocationUpdate",
+    "onLocationChange"
+  ],
+  "sitemapLocation": "sitemap.json"
+}
+

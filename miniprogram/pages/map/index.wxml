@@ -1,0 +1,57 @@
+<view class="page">
+  <map
+    id="citywalk-map"
+    class="map"
+    longitude="{{center.longitude}}"
+    latitude="{{center.latitude}}"
+    scale="{{scale}}"
+    show-location
+    polyline="{{polylines}}"
+    markers="{{markers}}"
+  />
+
+  <view class="toolbar">
+    <button class="tool-button" bindtap="focusCurrentLocation">定位</button>
+    <button class="tool-button primary" wx:if="{{!isRecording}}" bindtap="startRecording">开始记录</button>
+    <button class="tool-button warning" wx:if="{{isRecording}}" bindtap="stopRecording">结束记录</button>
+  </view>
+
+  <scroll-view class="route-strip" scroll-x>
+    <button
+      wx:for="{{routes}}"
+      wx:key="id"
+      class="route-chip {{selectedRouteId === item.id ? 'active' : ''}}"
+      style="--route-color: {{item.color}}"
+      data-route-id="{{item.id}}"
+      bindtap="selectRoute"
+    >
+      {{item.name}}
+    </button>
+  </scroll-view>
+
+  <view class="dialog-mask" wx:if="{{isWalkDialogVisible}}">
+    <view class="dialog">
+      <view class="dialog-title">保存路线</view>
+      <input
+        class="dialog-input"
+        value="{{walkName}}"
+        maxlength="120"
+        placeholder="路线名称"
+        bindinput="updateWalkName"
+      />
+      <textarea
+        class="dialog-textarea"
+        value="{{walkDescription}}"
+        maxlength="1000"
+        placeholder="路线描述"
+        bindinput="updateWalkDescription"
+      />
+      <view class="dialog-actions">
+        <button class="dialog-button" disabled="{{isSavingWalk}}" bindtap="cancelWalkSave">取消</button>
+        <button class="dialog-button primary" loading="{{isSavingWalk}}" disabled="{{isSavingWalk}}" bindtap="confirmWalkSave">
+          确认
+        </button>
+      </view>
+    </view>
+  </view>
+</view>

@@ -4,4 +4,4 @@ dist
 .env.example
 .DS_Store
 *.log
-prisma/migrations
+miniprogram/project.private.config.json

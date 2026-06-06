@@ -1,0 +1,146 @@
+.page {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.map {
+  width: 100%;
+  height: 100%;
+}
+
+.toolbar {
+  position: absolute;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: 146rpx;
+  display: flex;
+  gap: 16rpx;
+}
+
+.tool-button {
+  flex: 1;
+  min-height: 72rpx;
+  border: 1rpx solid #d7e0eb;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1b3558;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.tool-button.primary {
+  border-color: #1167d8;
+  background: #1167d8;
+  color: #ffffff;
+}
+
+.tool-button.warning {
+  border-color: #d97706;
+  background: #d97706;
+  color: #ffffff;
+}
+
+.route-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 36rpx;
+  box-sizing: border-box;
+  padding: 0 24rpx;
+  white-space: nowrap;
+}
+
+.route-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 320rpx;
+  min-height: 68rpx;
+  margin-right: 14rpx;
+  padding: 0 22rpx;
+  border: 1rpx solid #d7e0eb;
+  border-left: 8rpx solid var(--route-color);
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.96);
+  color: #26313d;
+  font-size: 26rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-chip.active {
+  border-color: #98bdff;
+  background: #eef5ff;
+}
+
+.dialog-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  padding: 24rpx;
+  background: rgba(19, 28, 40, 0.36);
+}
+
+.dialog {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 28rpx;
+  border-radius: 16rpx;
+  background: #ffffff;
+  box-shadow: 0 18rpx 54rpx rgba(27, 39, 55, 0.22);
+}
+
+.dialog-title {
+  margin-bottom: 20rpx;
+  color: #17202a;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.dialog-input,
+.dialog-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1rpx solid #d7e0eb;
+  border-radius: 12rpx;
+  background: #ffffff;
+  color: #17202a;
+  font-size: 28rpx;
+}
+
+.dialog-input {
+  height: 76rpx;
+  padding: 0 20rpx;
+}
+
+.dialog-textarea {
+  height: 160rpx;
+  margin-top: 16rpx;
+  padding: 18rpx 20rpx;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 22rpx;
+}
+
+.dialog-button {
+  flex: 1;
+  min-height: 76rpx;
+  border: 1rpx solid #d7e0eb;
+  border-radius: 12rpx;
+  background: #ffffff;
+  color: #1b3558;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.dialog-button.primary {
+  border-color: #1167d8;
+  background: #1167d8;
+  color: #ffffff;
+}
