@@ -13,11 +13,14 @@
       "desc": "用于在地图上显示当前位置，并记录实际步行轨迹"
     }
   },
+  "requiredBackgroundModes": [
+    "location"
+  ],
   "requiredPrivateInfos": [
     "getLocation",
     "startLocationUpdate",
+    "startLocationUpdateBackground",
     "onLocationChange"
   ],
   "sitemapLocation": "sitemap.json"
 }
-

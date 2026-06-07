@@ -15,6 +15,7 @@ Page({
     selectedRouteId: "",
     shouldShowLocation: false,
     isRecording: false,
+    locationMode: "",
     isSavingWalk: false,
     isWalkDialogVisible: false,
     walkName: "",
@@ -118,14 +119,55 @@ Page({
   },
 
   startRecording() {
-    wx.startLocationUpdate({
+    const startForegroundLocation = () => {
+      wx.startLocationUpdate({
+        type: "gcj02",
+        success: () => {
+          wx.onLocationChange(this.handleLocationChange);
+          this.setData(
+            {
+              isRecording: true,
+              locationMode: "foreground",
+              shouldShowLocation: true,
+              trackPoints: []
+            },
+            () => this.renderPolylines()
+          );
+          wx.showToast({ title: "前台记录中", icon: "none" });
+        },
+        fail: (error) => {
+          console.error("[map] start foreground location update failed", error);
+          wx.showToast({ title: "定位权限未开启", icon: "none" });
+        }
+      });
+    };
+
+    const startLocationUpdateBackground = wx.startLocationUpdateBackground;
+
+    if (typeof startLocationUpdateBackground !== "function") {
+      console.warn("[map] background location is not available, fallback to foreground location");
+      startForegroundLocation();
+      return;
+    }
+
+    startLocationUpdateBackground({
+      type: "gcj02",
       success: () => {
         wx.onLocationChange(this.handleLocationChange);
-        this.setData({ isRecording: true, shouldShowLocation: true, trackPoints: [] }, () => this.renderPolylines());
+        this.setData(
+          {
+            isRecording: true,
+            locationMode: "background",
+            shouldShowLocation: true,
+            trackPoints: []
+          },
+          () => this.renderPolylines()
+        );
+        wx.showToast({ title: "后台记录中", icon: "none" });
       },
       fail: (error) => {
-        console.error("[map] start location update failed", error);
-        wx.showToast({ title: "定位权限未开启", icon: "none" });
+        console.warn("[map] start background location update failed, fallback to foreground location", error);
+        startForegroundLocation();
       }
     });
   },
@@ -133,7 +175,7 @@ Page({
   stopRecording() {
     wx.offLocationChange(this.handleLocationChange);
     wx.stopLocationUpdate();
-    this.setData({ isRecording: false }, () => this.renderPolylines());
+    this.setData({ isRecording: false, locationMode: "" }, () => this.renderPolylines());
 
     if (this.data.trackPoints.length < 2) {
       wx.showToast({ title: "轨迹点太少", icon: "none" });

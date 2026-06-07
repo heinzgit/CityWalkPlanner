@@ -24,7 +24,25 @@ import { buildTree, findRoute, getNextVisibility } from "./tree";
 import type { RoutePlan, RoutePoint, TreeNode, VisibilityState } from "./types";
 
 const defaultCenter = { lng: 121.4737, lat: 31.2304 };
-const colorChoices = ["#1677ff", "#19a974", "#fa8c16", "#d9363e", "#722ed1", "#08979c"];
+const colorChoices = [
+  "#1677ff",
+  "#2f54eb",
+  "#722ed1",
+  "#eb2f96",
+  "#d9363e",
+  "#fa541c",
+  "#fa8c16",
+  "#d4b106",
+  "#7cb305",
+  "#19a974",
+  "#13c2c2",
+  "#08979c",
+  "#2f4858",
+  "#5d6876",
+  "#8c6d31",
+  "#111827"
+];
+const colorPattern = /^#[0-9a-fA-F]{6}$/;
 const currentPointIcon =
   "data:image/svg+xml;charset=UTF-8," +
   encodeURIComponent(
@@ -79,6 +97,10 @@ function formatDistance(points: RoutePoint[]) {
 
 function isLngLat(point: Pick<RoutePoint, "lng" | "lat">) {
   return point.lng >= -180 && point.lng <= 180 && point.lat >= -90 && point.lat <= 90;
+}
+
+function getInputColor(color: string) {
+  return colorPattern.test(color) ? color : "#1677ff";
 }
 
 function TreeView({
@@ -260,6 +282,7 @@ export function App() {
   const [dropTarget, setDropTarget] = useState<RouteDropTarget | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [colorDraft, setColorDraft] = useState("");
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<BMapGL.Map | null>(null);
@@ -274,6 +297,10 @@ export function App() {
   useEffect(() => {
     routesRef.current = routes;
   }, [routes]);
+
+  useEffect(() => {
+    setColorDraft(selectedRoute?.color ?? "");
+  }, [selectedRoute?.id, selectedRoute?.color]);
 
   useEffect(() => {
     if (!selectedRoute || selectedPointIndex === null) return;
@@ -787,6 +814,38 @@ export function App() {
                     onClick={() => patchSelectedRoute({ color })}
                   />
                 ))}
+              </div>
+              <div className="color-picker-row">
+                <input
+                  aria-label="自定义路线颜色"
+                  className="color-picker"
+                  type="color"
+                  value={getInputColor(selectedRoute.color)}
+                  disabled={routeMode !== "edit"}
+                  onChange={(event) => {
+                    setColorDraft(event.target.value.toUpperCase());
+                    patchSelectedRoute({ color: event.target.value });
+                  }}
+                />
+                <input
+                  aria-label="路线颜色代码"
+                  className="color-code"
+                  value={colorDraft}
+                  disabled={routeMode !== "edit"}
+                  maxLength={7}
+                  onChange={(event) => {
+                    const nextColor = event.target.value.startsWith("#") ? event.target.value : `#${event.target.value}`;
+                    setColorDraft(nextColor.toUpperCase());
+                    if (colorPattern.test(nextColor)) {
+                      patchSelectedRoute({ color: nextColor });
+                    }
+                  }}
+                  onBlur={(event) => {
+                    if (!colorPattern.test(event.target.value)) {
+                      setColorDraft(getInputColor(selectedRoute.color).toUpperCase());
+                    }
+                  }}
+                />
               </div>
             </div>
             <div className="route-summary">
