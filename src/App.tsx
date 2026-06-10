@@ -470,6 +470,7 @@ export function App() {
         });
         polyline.addEventListener("click", () => {
           if (skipNextMapClickRef.current) return;
+          if (routeMode === "edit" && route.id !== selectedRouteId) return;
           skipNextMapClickRef.current = true;
           window.setTimeout(() => {
             skipNextMapClickRef.current = false;

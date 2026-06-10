@@ -16,18 +16,65 @@
     <button class="tool-button warning" wx:if="{{isRecording}}" bindtap="stopRecording">结束记录</button>
   </view>
 
-  <scroll-view class="route-strip" scroll-x>
-    <button
-      wx:for="{{routes}}"
-      wx:key="id"
-      class="route-chip {{selectedRouteId === item.id ? 'active' : ''}}"
-      style="--route-color: {{item.color}}"
-      data-route-id="{{item.id}}"
-      bindtap="selectRoute"
-    >
-      {{item.name}}
-    </button>
-  </scroll-view>
+  <button class="route-panel-tab" wx:if="{{!isRoutePanelVisible}}" bindtap="openRoutePanel">路线列表</button>
+
+  <view class="route-panel-mask" wx:if="{{isRoutePanelVisible}}" bindtap="closeRoutePanel"></view>
+  <view class="route-panel {{isRoutePanelVisible ? 'visible' : ''}}">
+    <view class="route-panel-header">
+      <view>
+        <view class="route-panel-title">路线列表</view>
+        <view class="route-panel-subtitle">{{displayRoutes.length}} 条可查看路线</view>
+      </view>
+      <view class="route-panel-actions">
+        <button
+          class="route-sync-button"
+          wx:if="{{localWalks.length > 0}}"
+          loading="{{syncingWalkIds.length > 0}}"
+          disabled="{{syncingWalkIds.length > 0}}"
+          bindtap="syncAllLocalWalks"
+        >
+          同步本地路线
+        </button>
+        <button class="icon-button" bindtap="closeRoutePanel">隐藏</button>
+      </view>
+    </view>
+
+    <view class="empty-state" wx:if="{{routeListRows.length === 0}}">暂无可查看路线</view>
+
+    <scroll-view class="route-list" scroll-y wx:else>
+      <block wx:for="{{routeListRows}}" wx:key="id">
+        <view
+          wx:if="{{item.type === 'folder'}}"
+          class="folder-panel-header {{item.isExpanded ? 'expanded' : ''}}"
+          style="margin-left: {{item.level * 18}}rpx"
+          data-folder-id="{{item.id}}"
+          bindtap="toggleFolderExpanded"
+        >
+          <text class="folder-disclosure">{{item.isExpanded ? '⌄' : '›'}}</text>
+          <view class="folder-panel-main">
+            <view class="folder-panel-name">{{item.name}}</view>
+            <view class="folder-panel-count">{{item.routeCount}}</view>
+          </view>
+        </view>
+
+        <view
+          wx:if="{{item.type === 'route'}}"
+          class="route-list-item {{selectedRouteId === item.id ? 'active' : ''}}"
+          style="--route-color: {{item.color}}; margin-left: {{24 + item.level * 18}}rpx"
+          data-route-id="{{item.id}}"
+          bindtap="selectRoute"
+        >
+          <view class="route-color-bar"></view>
+          <view class="route-item-main">
+            <view class="route-item-name">{{item.name}}</view>
+            <view class="route-item-meta">
+              {{item.points.length}} 个点 · {{item.sourceType === 'local' ? item.syncStatus === 'failed' ? '同步失败' : item.syncStatus === 'syncing' ? '同步中' : '本地路线' : '普通路线'}}
+            </view>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
 
   <view class="dialog-mask" wx:if="{{isWalkDialogVisible}}">
     <view class="dialog">
@@ -49,9 +96,10 @@
       <view class="dialog-actions">
         <button class="dialog-button" disabled="{{isSavingWalk}}" bindtap="cancelWalkSave">取消</button>
         <button class="dialog-button primary" loading="{{isSavingWalk}}" disabled="{{isSavingWalk}}" bindtap="confirmWalkSave">
-          确认
+          保存到本地
         </button>
       </view>
     </view>
   </view>
+
 </view>

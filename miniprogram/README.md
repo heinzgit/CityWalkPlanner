@@ -19,7 +19,8 @@
    - 监听位置变化，并将用户走过的位置实时绘制为一条 polyline。
    - 定位点只保存在小程序内存状态里，作为临时路线草稿。
    - 用户点击结束记录后，输入路线名称和描述。
-   - 用户确认后，直接把临时点位保存为一条新的 route plan。
+   - 用户确认后，先把临时点位长期保存到微信本地 storage。
+   - 用户可以稍后从“本地路线”面板手动同步到服务器，成功后本地草稿会被删除。
 
 ## 和现有系统的关系
 
@@ -35,7 +36,42 @@ type RoutePlan = {
 }
 ```
 
-小程序不新增数据库表。walk 过程中的点位只是临时状态，确认保存时写入 `route_plans.pointsJson`。
+小程序不新增数据库表。walk 过程中的点位先保存在本地 storage，手动同步时写入 `route_plans.pointsJson`。
+
+## 本地路线和手动同步
+
+小程序使用 `services/localWalks.js` 管理本地路线草稿，storage key 为 `citywalk.localWalks.v1`。
+
+本地 walk 保存 GCJ-02 原始定位点：
+
+```ts
+type LocalWalk = {
+  id: string;
+  name: string;
+  description: string | null;
+  points: Array<{
+    lng: number;
+    lat: number;
+    accuracy?: number;
+    speed?: number;
+    capturedAt: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+  syncStatus: "pending" | "syncing" | "failed";
+  serverRouteId: string | null;
+  lastSyncError: string | null;
+};
+```
+
+同步规则：
+
+- 结束记录后的“保存到本地”不请求服务器。
+- “本地路线”面板显示待同步数量、点位数量和失败状态。
+- 单条同步和全部同步都复用 `POST /api/routes/from-walk`。
+- 同步前把 GCJ-02 点位转换成 BD-09。
+- 同步成功后删除本地草稿并刷新服务器路线。
+- 同步失败时保留本地草稿，并允许之后重试。
 
 ## 坐标系统
 
@@ -44,8 +80,8 @@ type RoutePlan = {
 - Web 端使用百度地图，现有路线点通常是 BD-09 坐标。
 - 微信小程序地图和定位常用 GCJ-02 坐标。
 - 小程序展示现有路线时，需要把 BD-09 转成 GCJ-02。
-- 小程序实时画线时使用 GCJ-02 原始定位点。
-- 小程序保存为 route plan 前，把 GCJ-02 转成 BD-09，保证 Web 百度地图展示不偏移。
+- 小程序实时画线和本地草稿都使用 GCJ-02 原始定位点。
+- 小程序同步为 route plan 前，把 GCJ-02 转成 BD-09，保证 Web 百度地图展示不偏移。
 
 当前目录里已经提供 `utils/coord.js`：
 
