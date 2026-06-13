@@ -6,17 +6,32 @@ dotenv.config();
 const prisma = new PrismaClient();
 
 async function main() {
-  const existing = await prisma.routePlan.findFirst({ where: { name: "武康路到安福路" } });
+  const legacyUser = await prisma.user.upsert({
+    where: { username: "legacy" },
+    create: {
+      id: "legacy-user",
+      username: "legacy",
+      displayName: "历史数据",
+      passwordHash: "DISABLED_LEGACY_PASSWORD"
+    },
+    update: {
+      displayName: "历史数据"
+    }
+  });
+
+  const existing = await prisma.routePlan.findFirst({ where: { userId: legacyUser.id, name: "武康路到安福路" } });
   if (existing) return;
 
   const folder = await prisma.folder.upsert({
     where: { id: "seed-shanghai-folder" },
     create: {
       id: "seed-shanghai-folder",
+      userId: legacyUser.id,
       name: "上海示例",
       isVisible: true
     },
     update: {
+      userId: legacyUser.id,
       name: "上海示例",
       isVisible: true
     }
@@ -24,6 +39,7 @@ async function main() {
 
   await prisma.routePlan.create({
     data: {
+      userId: legacyUser.id,
       folderId: folder.id,
       name: "武康路到安福路",
       description: "一条用于验证地图加载和图层显示的示例路线。",

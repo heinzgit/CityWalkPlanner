@@ -9,6 +9,7 @@ import {
   EyeOff,
   Folder,
   FolderPlus,
+  LogOut,
   PanelLeftClose,
   PanelRightClose,
   LocateFixed,
@@ -21,7 +22,7 @@ import {
 import { api } from "./api";
 import { loadBaiduMap } from "./baiduMap";
 import { buildTree, findRoute, getNextVisibility } from "./tree";
-import type { RoutePlan, RoutePoint, TreeNode, VisibilityState } from "./types";
+import type { RoutePlan, RoutePoint, TreeNode, User, VisibilityState } from "./types";
 
 const defaultCenter = { lng: 121.4737, lat: 31.2304 };
 const colorChoices = [
@@ -64,10 +65,93 @@ type RouteDropTarget =
   | { type: "folder"; folderId: string | null }
   | { type: "route"; folderId: string | null; routeId: string; position: "before" | "after" };
 
+type AuthMode = "login" | "register";
+
 function visibilityIcon(state: VisibilityState) {
   if (state === "visible") return <Eye size={16} />;
   if (state === "hidden") return <EyeOff size={16} />;
   return <Minus size={16} />;
+}
+
+function AuthScreen({
+  mode,
+  authError,
+  isSubmitting,
+  onModeChange,
+  onSubmit
+}: {
+  mode: AuthMode;
+  authError: string | null;
+  isSubmitting: boolean;
+  onModeChange: (mode: AuthMode) => void;
+  onSubmit: (payload: { username: string; password: string; displayName?: string }) => Promise<void>;
+}) {
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
+
+  return (
+    <main className="auth-screen">
+      <form
+        className="auth-panel"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit({
+            username,
+            password,
+            displayName: mode === "register" ? displayName || username : undefined
+          });
+        }}
+      >
+        <div className="auth-heading">
+          <h1>CityWalk Planner</h1>
+          <p>{mode === "login" ? "登录后查看你的路线空间" : "创建账号后开始规划路线"}</p>
+        </div>
+        <label className="auth-field">
+          <span>账号</span>
+          <input
+            value={username}
+            autoComplete="username"
+            pattern="[a-zA-Z0-9_.-]{3,80}"
+            placeholder="heinz"
+            required
+            onChange={(event) => setUsername(event.target.value)}
+          />
+        </label>
+        {mode === "register" ? (
+          <label className="auth-field">
+            <span>显示名称</span>
+            <input
+              value={displayName}
+              autoComplete="name"
+              maxLength={120}
+              placeholder="我的 CityWalk"
+              onChange={(event) => setDisplayName(event.target.value)}
+            />
+          </label>
+        ) : null}
+        <label className="auth-field">
+          <span>密码</span>
+          <input
+            value={password}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            minLength={8}
+            maxLength={128}
+            type="password"
+            required
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        {authError ? <div className="auth-error">{authError}</div> : null}
+        <button className="auth-submit" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "处理中" : mode === "login" ? "登录" : "注册"}
+        </button>
+        <button className="auth-switch" type="button" onClick={() => onModeChange(mode === "login" ? "register" : "login")}>
+          {mode === "login" ? "没有账号，去注册" : "已有账号，去登录"}
+        </button>
+      </form>
+    </main>
+  );
 }
 
 function routeDistance(points: RoutePoint[]) {
@@ -266,6 +350,11 @@ function TreeView({
 }
 
 export function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [authStatus, setAuthStatus] = useState<"checking" | "ready">("checking");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [routes, setRoutes] = useState<RoutePlan[]>([]);
   const [folders, setFolders] = useState<Awaited<ReturnType<typeof api.getTree>>["folders"]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -293,6 +382,20 @@ export function App() {
 
   const selectedRoute = useMemo(() => findRoute(routes, selectedRouteId), [routes, selectedRouteId]);
   const treeNodes = useMemo(() => buildTree(folders, routes), [folders, routes]);
+
+  const clearWorkspace = useCallback(() => {
+    setRoutes([]);
+    setFolders([]);
+    setSelectedRouteId(null);
+    setExpandedFolderIds(new Set());
+    setRouteMode("view");
+    setSelectedPointIndex(null);
+    setDataStatus("请先登录");
+    setIsMapReady(false);
+    setMapStatus("正在加载地图");
+    mapRef.current = null;
+    overlaysRef.current.clear();
+  }, []);
 
   useEffect(() => {
     routesRef.current = routes;
@@ -402,13 +505,31 @@ export function App() {
   }, [sidebarWidth]);
 
   useEffect(() => {
+    api
+      .me()
+      .then((payload) => {
+        setCurrentUser(payload.user);
+      })
+      .catch(() => {
+        clearWorkspace();
+      })
+      .finally(() => {
+        setAuthStatus("ready");
+      });
+  }, [clearWorkspace]);
+
+  useEffect(() => {
+    if (!currentUser) return;
     refreshTree().catch((caught) => {
       setError(caught instanceof Error ? caught.message : "加载路线失败");
       setDataStatus("加载失败");
     });
-  }, [refreshTree]);
+  }, [currentUser, refreshTree]);
 
   useEffect(() => {
+    if (!currentUser || authStatus !== "ready") return;
+    if (mapRef.current) return;
+
     const ak = import.meta.env.VITE_BAIDU_MAP_AK as string | undefined;
 
     if (!ak || ak === "your-baidu-map-ak") {
@@ -437,7 +558,7 @@ export function App() {
     return () => {
       disposed = true;
     };
-  }, []);
+  }, [authStatus, currentUser]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -673,6 +794,60 @@ export function App() {
     setRouteMode("edit");
   };
 
+  const submitAuth = async (payload: { username: string; password: string; displayName?: string }) => {
+    setIsAuthSubmitting(true);
+    setAuthError(null);
+    try {
+      const result = authMode === "login" ? await api.login(payload) : await api.register(payload);
+      setCurrentUser(result.user);
+      setError(null);
+      setDataStatus("正在加载路线");
+    } catch (caught) {
+      setAuthError(caught instanceof Error ? caught.message : "认证失败");
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch (caught) {
+      console.warn(caught);
+    } finally {
+      setCurrentUser(null);
+      clearWorkspace();
+    }
+  };
+
+  if (authStatus === "checking") {
+    return (
+      <main className="auth-screen">
+        <div className="auth-panel compact">
+          <div className="auth-heading">
+            <h1>CityWalk Planner</h1>
+            <p>正在检查登录状态</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <AuthScreen
+        mode={authMode}
+        authError={authError}
+        isSubmitting={isAuthSubmitting}
+        onModeChange={(nextMode) => {
+          setAuthMode(nextMode);
+          setAuthError(null);
+        }}
+        onSubmit={submitAuth}
+      />
+    );
+  }
+
   return (
     <main
       className={`app-shell ${isSidebarCollapsed ? "sidebar-collapsed" : ""} ${
@@ -684,9 +859,14 @@ export function App() {
         <header className="panel-header">
           <div>
             <h1>CityWalk Planner</h1>
-            <p>{dataStatus}</p>
+            <p>
+              {currentUser.displayName || currentUser.username} · {dataStatus}
+            </p>
           </div>
           <div className="header-actions">
+            <button className="icon-button" type="button" title="退出登录" onClick={logout}>
+              <LogOut size={17} />
+            </button>
             <button className="icon-button" type="button" title="隐藏左边栏" onClick={() => setIsSidebarCollapsed(true)}>
               <PanelLeftClose size={17} />
             </button>

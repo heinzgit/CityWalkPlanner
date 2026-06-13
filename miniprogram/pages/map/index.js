@@ -34,12 +34,20 @@ Page({
     localWalks: [],
     syncingWalkIds: [],
     polylines: [],
-    markers: []
+    markers: [],
+    currentUser: null,
+    isAuthChecking: true,
+    isLoginVisible: true,
+    authMode: "login",
+    authUsername: "",
+    authPassword: "",
+    authDisplayName: "",
+    isAuthSubmitting: false
   },
 
   onLoad() {
-    this.loadRoutes();
     this.loadLocalWalks();
+    this.checkAuth();
   },
 
   onUnload() {
@@ -47,7 +55,31 @@ Page({
     wx.stopLocationUpdate();
   },
 
+  async checkAuth() {
+    this.setData({ isAuthChecking: true });
+    try {
+      const payload = await api.me();
+      this.setData({
+        currentUser: payload.user,
+        isLoginVisible: false,
+        isAuthChecking: false
+      });
+      this.loadRoutes();
+    } catch (error) {
+      console.warn("[map] auth check failed", error);
+      this.setData({
+        currentUser: null,
+        isLoginVisible: true,
+        isAuthChecking: false,
+        routes: [],
+        displayRoutes: this.buildDisplayRoutes([], this.data.localWalks)
+      });
+      this.loadLocalWalks({ preserveSelectedId: true });
+    }
+  },
+
   async loadRoutes() {
+    if (!this.data.currentUser) return;
     try {
       const payload = await api.getTree();
       const routes = payload.routes.filter((route) => route.isVisible);
@@ -73,6 +105,80 @@ Page({
       console.error("[map] load routes failed", error);
       wx.showToast({ title: "路线加载失败", icon: "none" });
     }
+  },
+
+  switchAuthMode() {
+    this.setData({
+      authMode: this.data.authMode === "login" ? "register" : "login"
+    });
+  },
+
+  updateAuthUsername(event) {
+    this.setData({ authUsername: event.detail.value });
+  },
+
+  updateAuthPassword(event) {
+    this.setData({ authPassword: event.detail.value });
+  },
+
+  updateAuthDisplayName(event) {
+    this.setData({ authDisplayName: event.detail.value });
+  },
+
+  submitAuth() {
+    const username = this.data.authUsername.trim();
+    const password = this.data.authPassword;
+    const displayName = this.data.authDisplayName.trim();
+
+    if (!/^[a-zA-Z0-9_.-]{3,80}$/.test(username)) {
+      wx.showToast({ title: "账号至少 3 位", icon: "none" });
+      return;
+    }
+
+    if (password.length < 8) {
+      wx.showToast({ title: "密码至少 8 位", icon: "none" });
+      return;
+    }
+
+    this.setData({ isAuthSubmitting: true });
+    const action = this.data.authMode === "login" ? api.login : api.register;
+
+    action({
+      username,
+      password,
+      displayName: this.data.authMode === "register" ? displayName || username : undefined
+    })
+      .then((result) => {
+        this.setData({
+          currentUser: result.user,
+          isLoginVisible: false,
+          isAuthSubmitting: false,
+          authPassword: ""
+        });
+        wx.showToast({ title: this.data.authMode === "login" ? "已登录" : "已注册" });
+        this.loadRoutes();
+      })
+      .catch((error) => {
+        console.error("[map] auth failed", error);
+        this.setData({ isAuthSubmitting: false });
+        wx.showToast({ title: "账号或密码错误", icon: "none" });
+      });
+  },
+
+  logout() {
+    api.logout().then(() => {
+      this.setData({
+        currentUser: null,
+        isLoginVisible: true,
+        routes: [],
+        folders: [],
+        displayRoutes: this.buildDisplayRoutes([], this.data.localWalks),
+        routeTreeNodes: [],
+        routeListRows: [],
+        selectedRouteId: ""
+      });
+      this.loadLocalWalks({ preserveSelectedId: true });
+    });
   },
 
   loadLocalWalks(options = {}) {
@@ -495,6 +601,12 @@ Page({
   },
 
   syncAllLocalWalks() {
+    if (!this.data.currentUser) {
+      this.setData({ isLoginVisible: true });
+      wx.showToast({ title: "请先登录", icon: "none" });
+      return;
+    }
+
     const pendingWalks = this.data.localWalks.filter(
       (walk) => !this.data.syncingWalkIds.includes(walk.id) && walk.syncStatus !== "syncing"
     );

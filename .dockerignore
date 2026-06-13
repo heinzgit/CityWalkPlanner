@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+!.env.template
+deploy.env
+node_modules
+dist
+build
+coverage
+npm-debug.log*
+Dockerfile
+docker-compose*.yml
+ios
+miniprogram

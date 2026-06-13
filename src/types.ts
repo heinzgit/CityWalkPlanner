@@ -29,9 +29,20 @@ export type RoutePlan = {
   points: RoutePoint[];
 };
 
+export type User = {
+  id: string;
+  username: string;
+  displayName: string | null;
+};
+
 export type TreePayload = {
   folders: Folder[];
   routes: RoutePlan[];
+};
+
+export type AuthPayload = {
+  user: User;
+  token?: string;
 };
 
 export type VisibilityState = "visible" | "hidden" | "mixed";

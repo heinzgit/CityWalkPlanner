@@ -1,7 +1,8 @@
-import type { Folder, RoutePlan, RoutePoint, TreePayload } from "./types";
+import type { AuthPayload, Folder, RoutePlan, RoutePoint, TreePayload } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
+    credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     ...init
   });
@@ -19,6 +20,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  me: () => request<AuthPayload>("/api/auth/me"),
+  login: (payload: { username: string; password: string }) =>
+    request<AuthPayload>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  register: (payload: { username: string; password: string; displayName?: string }) =>
+    request<AuthPayload>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  logout: () => request<void>("/api/auth/logout", { method: "POST" }),
   getTree: () => request<TreePayload>("/api/tree"),
   createFolder: (payload: { name: string; parentId?: string | null }) =>
     request<Folder>("/api/folders", {

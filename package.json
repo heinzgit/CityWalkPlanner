@@ -8,6 +8,8 @@
     "dev:client": "vite",
     "dev:server": "tsx server/index.ts",
     "build": "tsc -b && vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "node build/server/index.js",
     "preview": "vite preview",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
