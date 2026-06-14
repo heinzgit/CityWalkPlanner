@@ -16,6 +16,8 @@ const host = process.env.HOST ?? "0.0.0.0";
 const sessionCookieName = "citywalk_session";
 const sessionDurationMs = 30 * 24 * 60 * 60 * 1000;
 const isProduction = process.env.NODE_ENV === "production";
+const isSessionCookieSecure =
+  process.env.SESSION_COOKIE_SECURE === undefined ? isProduction : process.env.SESSION_COOKIE_SECURE === "true";
 const isCorsOriginCheckEnabled = process.env.CORS_ORIGIN_CHECK_ENABLED === "true";
 const corsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
   .split(",")
@@ -99,7 +101,7 @@ function setSessionCookie(res: Response, token: string, expiresAt: Date) {
   res.cookie(sessionCookieName, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: isProduction,
+    secure: isSessionCookieSecure,
     path: "/",
     expires: expiresAt
   });
@@ -109,7 +111,7 @@ function clearSessionCookie(res: Response) {
   res.clearCookie(sessionCookieName, {
     httpOnly: true,
     sameSite: "lax",
-    secure: isProduction,
+    secure: isSessionCookieSecure,
     path: "/"
   });
 }
@@ -703,4 +705,5 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 
 app.listen(port, host, () => {
   console.log(`CityWalk Planner API listening on http://${host}:${port}`);
+  console.log(`Session cookie secure mode: ${isSessionCookieSecure ? "enabled" : "disabled"}`);
 });

@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://192.168.71.191:43101";
+const API_BASE_URL = "http://115.29.231.75:43101";
 const TOKEN_STORAGE_KEY = "citywalk_session_token";
 
 function getToken() {

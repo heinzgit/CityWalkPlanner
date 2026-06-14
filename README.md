@@ -29,6 +29,7 @@
    DATABASE_URL="mysql://USER:PASSWORD@localhost:3306/citywalk_codex"
    VITE_BAIDU_MAP_AK="your-baidu-map-ak"
    PORT=43101
+   SESSION_COOKIE_SECURE=false
    CORS_ORIGIN_CHECK_ENABLED=false
    CORS_ALLOWED_ORIGINS=""
    ```
@@ -80,6 +81,8 @@ cp deploy.env.example deploy.env
 ```
 
 编辑 `deploy.env`，填写生产数据库连接等运行时配置。
+
+如果直接通过 `http://服务器IP:43101` 访问，`deploy.env` 中需要设置 `SESSION_COOKIE_SECURE=false`。如果前面有 HTTPS 反向代理，则设置为 `true`。
 
 构建镜像：
 
