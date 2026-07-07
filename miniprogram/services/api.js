@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://115.29.231.75:43101";
+const API_BASE_URLS = ["http://192.168.71.202:43101", "http://127.0.0.1:43101", "http://localhost:43101"];
 const TOKEN_STORAGE_KEY = "citywalk_session_token";
 
 function getToken() {
@@ -13,8 +13,8 @@ function setToken(token) {
   }
 }
 
-function request(path, options = {}) {
-  const url = `${API_BASE_URL}${path}`;
+function requestWithBaseUrl(baseUrl, path, options = {}) {
+  const url = `${baseUrl}${path}`;
   const token = getToken();
 
   return new Promise((resolve, reject) => {
@@ -44,30 +44,21 @@ function request(path, options = {}) {
   });
 }
 
+function request(path, options = {}) {
+  return API_BASE_URLS.reduce(
+    (promise, baseUrl) => promise.catch(() => requestWithBaseUrl(baseUrl, path, options)),
+    Promise.reject()
+  );
+}
+
 const api = {
-  me: () => request("/api/auth/me"),
-  login: (payload) =>
-    request("/api/auth/login", {
-      method: "POST",
-      data: payload
+  useMiniProgramDefaultUser: () =>
+    request("/api/auth/miniprogram/default-user", {
+      method: "POST"
     }).then((result) => {
       setToken(result.token);
       return result;
     }),
-  register: (payload) =>
-    request("/api/auth/register", {
-      method: "POST",
-      data: payload
-    }).then((result) => {
-      setToken(result.token);
-      return result;
-    }),
-  logout: () =>
-    request("/api/auth/logout", { method: "POST" })
-      .catch(() => undefined)
-      .then(() => {
-        setToken("");
-      }),
   getTree: () => request("/api/tree"),
   createRouteFromWalk: (payload) =>
     request("/api/routes/from-walk", {

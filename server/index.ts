@@ -15,6 +15,7 @@ const port = Number(process.env.PORT ?? 43101);
 const host = process.env.HOST ?? "0.0.0.0";
 const sessionCookieName = "citywalk_session";
 const sessionDurationMs = 30 * 24 * 60 * 60 * 1000;
+const miniProgramDefaultUsername = "heinz";
 const isProduction = process.env.NODE_ENV === "production";
 const isSessionCookieSecure =
   process.env.SESSION_COOKIE_SECURE === undefined ? isProduction : process.env.SESSION_COOKIE_SECURE === "true";
@@ -138,6 +139,23 @@ async function createSession(userId: string, res: Response) {
 
   setSessionCookie(res, token, expiresAt);
   return token;
+}
+
+async function getMiniProgramDefaultUser() {
+  return prisma.user.upsert({
+    where: { username: miniProgramDefaultUsername },
+    update: {},
+    create: {
+      username: miniProgramDefaultUsername,
+      displayName: miniProgramDefaultUsername,
+      passwordHash: hashPassword(crypto.randomBytes(32).toString("base64url"))
+    },
+    select: {
+      id: true,
+      username: true,
+      displayName: true
+    }
+  });
 }
 
 async function authenticate(req: Request, res: Response, next: express.NextFunction) {
@@ -307,6 +325,16 @@ app.post("/api/auth/login", async (req, res, next) => {
       return;
     }
 
+    const token = await createSession(user.id, res);
+    res.json({ user: serializeUser(user), token });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/auth/miniprogram/default-user", async (_req, res, next) => {
+  try {
+    const user = await getMiniProgramDefaultUser();
     const token = await createSession(user.id, res);
     res.json({ user: serializeUser(user), token });
   } catch (error) {
