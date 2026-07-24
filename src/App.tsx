@@ -428,11 +428,6 @@ export function App() {
   const refreshTree = useCallback(async () => {
     const payload = await api.getTree();
     setFolders(payload.folders);
-    setExpandedFolderIds((current) => {
-      const next = new Set(current);
-      payload.folders.forEach((folder) => next.add(folder.id));
-      return next;
-    });
     setRoutes(payload.routes);
     setSelectedRouteId((current) => current ?? payload.routes[0]?.id ?? null);
     setDataStatus(payload.routes.length ? "已加载路线" : "还没有路线");

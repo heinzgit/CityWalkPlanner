@@ -1,5 +1,10 @@
 const { api } = require("../../services/api");
 const { deleteLocalWalk, listLocalWalks, saveLocalWalk, updateLocalWalk } = require("../../services/localWalks");
+const {
+  hasCachedServerRoutes,
+  readServerRouteCache,
+  writeServerRouteCache
+} = require("../../services/serverRouteCache");
 const { bd09ToGcj02, gcj02ToBd09, toMapPoint } = require("../../utils/coord");
 const { shouldAppendTrackPoint } = require("../../utils/track");
 
@@ -30,6 +35,8 @@ Page({
     isWalkDialogVisible: false,
     walkName: "",
     walkDescription: "",
+    walkStartedAt: "",
+    walkEndedAt: "",
     trackPoints: [],
     localWalks: [],
     syncingWalkIds: [],
@@ -41,6 +48,7 @@ Page({
 
   onLoad() {
     this.loadLocalWalks();
+    this.loadCachedServerRoutes();
     this.checkAuth();
   },
 
@@ -62,9 +70,7 @@ Page({
       console.warn("[map] auth check failed", error);
       this.setData({
         currentUser: null,
-        isAuthChecking: false,
-        routes: [],
-        displayRoutes: this.buildDisplayRoutes([], this.data.localWalks)
+        isAuthChecking: false
       });
       this.loadLocalWalks({ preserveSelectedId: true });
     }
@@ -74,29 +80,50 @@ Page({
     if (!this.data.currentUser) return;
     try {
       const payload = await api.getTree();
-      const routes = payload.routes.filter((route) => route.isVisible);
-      const folders = payload.folders || [];
-      const displayRoutes = this.buildDisplayRoutes(routes, this.data.localWalks);
-      const routeTreeNodes = this.buildRouteTree(folders, displayRoutes);
-      const expandedFolderIds = this.mergeExpandedFolderIds(routeTreeNodes);
-      const selectedRouteId = this.resolveSelectedRouteId(displayRoutes);
-
-      this.setData(
-        {
-          folders,
-          routes,
-          displayRoutes,
-          routeTreeNodes,
-          routeListRows: this.flattenRouteTree(routeTreeNodes, expandedFolderIds),
-          expandedFolderIds,
-          selectedRouteId
-        },
-        () => this.renderPolylines()
-      );
+      writeServerRouteCache(payload);
+      this.applyServerRoutes(payload, { preserveSelectedId: true });
     } catch (error) {
       console.error("[map] load routes failed", error);
+      const cache = readServerRouteCache();
+      if (hasCachedServerRoutes(cache)) {
+        this.applyServerRoutes(cache, { preserveSelectedId: true });
+        wx.showToast({ title: "已显示缓存路线", icon: "none" });
+        return;
+      }
+
       wx.showToast({ title: "路线加载失败", icon: "none" });
     }
+  },
+
+  loadCachedServerRoutes() {
+    const cache = readServerRouteCache();
+    if (!hasCachedServerRoutes(cache)) return;
+
+    this.applyServerRoutes(cache, { preserveSelectedId: true });
+  },
+
+  applyServerRoutes(payload, options = {}) {
+    const routes = (payload.routes || []).filter((route) => route.isVisible);
+    const folders = payload.folders || [];
+    const displayRoutes = this.buildDisplayRoutes(routes, this.data.localWalks);
+    const routeTreeNodes = this.buildRouteTree(folders, displayRoutes);
+    const expandedFolderIds = this.mergeExpandedFolderIds(routeTreeNodes);
+    const selectedRouteId = options.preserveSelectedId
+      ? this.data.selectedRouteId || this.resolveSelectedRouteId(displayRoutes)
+      : this.resolveSelectedRouteId(displayRoutes);
+
+    this.setData(
+      {
+        folders,
+        routes,
+        displayRoutes,
+        routeTreeNodes,
+        routeListRows: this.flattenRouteTree(routeTreeNodes, expandedFolderIds),
+        expandedFolderIds,
+        selectedRouteId
+      },
+      () => this.renderPolylines()
+    );
   },
 
   loadLocalWalks(options = {}) {
@@ -381,7 +408,31 @@ Page({
     });
   },
 
+  formatWalkTime(value) {
+    if (!value) return "";
+
+    const date = new Date(value);
+    const pad = (number) => `${number}`.padStart(2, "0");
+
+    return [
+      date.getFullYear(),
+      pad(date.getMonth() + 1),
+      pad(date.getDate())
+    ].join("-") + ` ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  },
+
+  buildWalkDescription(description, startedAt, endedAt) {
+    const timeLines = [
+      `开始时间：${this.formatWalkTime(startedAt)}`,
+      `结束时间：${this.formatWalkTime(endedAt)}`
+    ].filter((line) => !line.endsWith("："));
+
+    return [description, ...timeLines].filter(Boolean).join("\n") || null;
+  },
+
   startRecording() {
+    const startedAt = new Date().toISOString();
+
     const startForegroundLocation = () => {
       wx.startLocationUpdate({
         type: "gcj02",
@@ -392,6 +443,8 @@ Page({
               isRecording: true,
               locationMode: "foreground",
               shouldShowLocation: true,
+              walkStartedAt: startedAt,
+              walkEndedAt: "",
               trackPoints: []
             },
             () => this.renderPolylines()
@@ -422,6 +475,8 @@ Page({
             isRecording: true,
             locationMode: "background",
             shouldShowLocation: true,
+            walkStartedAt: startedAt,
+            walkEndedAt: "",
             trackPoints: []
           },
           () => this.renderPolylines()
@@ -436,9 +491,11 @@ Page({
   },
 
   stopRecording() {
+    const endedAt = new Date().toISOString();
+
     wx.offLocationChange(this.handleLocationChange);
     wx.stopLocationUpdate();
-    this.setData({ isRecording: false, locationMode: "" }, () => this.renderPolylines());
+    this.setData({ isRecording: false, locationMode: "", walkEndedAt: endedAt }, () => this.renderPolylines());
 
     if (this.data.trackPoints.length < 2) {
       wx.showToast({ title: "轨迹点太少", icon: "none" });
@@ -458,6 +515,8 @@ Page({
         isWalkDialogVisible: false,
         walkName: "",
         walkDescription: "",
+        walkStartedAt: "",
+        walkEndedAt: "",
         trackPoints: []
       },
       () => this.renderPolylines()
@@ -475,6 +534,7 @@ Page({
   confirmWalkSave() {
     const name = this.data.walkName.trim();
     const description = this.data.walkDescription.trim();
+    const walkDescription = this.buildWalkDescription(description, this.data.walkStartedAt, this.data.walkEndedAt);
 
     if (!name) {
       wx.showToast({ title: "请输入路线名称", icon: "none" });
@@ -488,7 +548,7 @@ Page({
     try {
       const savedWalk = saveLocalWalk({
         name,
-        description: description || null,
+        description: walkDescription,
         points: this.data.trackPoints
       });
 
@@ -499,6 +559,8 @@ Page({
           isWalkDialogVisible: false,
           walkName: "",
           walkDescription: "",
+          walkStartedAt: "",
+          walkEndedAt: "",
           trackPoints: [],
           selectedRouteId: savedWalk.id
         },

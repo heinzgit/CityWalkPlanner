@@ -1,4 +1,4 @@
-const API_BASE_URLS = ["http://192.168.71.202:43101", "http://127.0.0.1:43101", "http://localhost:43101"];
+const API_BASE_URLS = ["http://192.168.0.100:43101", "http://127.0.0.1:43101", "http://localhost:43101"];
 const TOKEN_STORAGE_KEY = "citywalk_session_token";
 
 function getToken() {
