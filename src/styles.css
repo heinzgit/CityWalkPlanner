@@ -525,6 +525,13 @@ button {
   gap: 8px;
 }
 
+.detail-actions .icon-button {
+  min-width: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .route-summary {
   display: flex;
   align-items: center;

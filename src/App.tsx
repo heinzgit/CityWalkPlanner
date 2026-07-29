@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import { loadBaiduMap } from "./baiduMap";
+import { createRouteKmz } from "./kmz";
 import { buildTree, findRoute, getNextVisibility } from "./tree";
 import type { RoutePlan, RoutePoint, TreeNode, User, VisibilityState } from "./types";
 
@@ -789,6 +790,17 @@ export function App() {
     setRouteMode("edit");
   };
 
+  const exportSelectedRouteKmz = async () => {
+    if (!selectedRoute) return;
+    const { blob, fileName } = createRouteKmz(selectedRoute);
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+  };
+
   const submitAuth = async (payload: { username: string; password: string; displayName?: string }) => {
     setIsAuthSubmitting(true);
     setAuthError(null);
@@ -956,6 +968,9 @@ export function App() {
                 </button>
                 <button className="icon-button" type="button" title="复制路线" onClick={copySelectedRoute}>
                   <Copy size={16} />
+                </button>
+                <button className="icon-button" type="button" title="导出 KMZ" onClick={exportSelectedRouteKmz}>
+                  KMZ
                 </button>
               </div>
             </header>

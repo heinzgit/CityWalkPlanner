@@ -421,13 +421,26 @@ Page({
     ].join("-") + ` ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   },
 
-  buildWalkDescription(description, startedAt, endedAt) {
-    const timeLines = [
-      `开始时间：${this.formatWalkTime(startedAt)}`,
-      `结束时间：${this.formatWalkTime(endedAt)}`
-    ].filter((line) => !line.endsWith("："));
+  formatWalkDate(value) {
+    if (!value) return "";
 
-    return [description, ...timeLines].filter(Boolean).join("\n") || null;
+    const date = new Date(value);
+    const pad = (number) => `${number}`.padStart(2, "0");
+
+    return [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join("/");
+  },
+
+  formatWalkTimeRange(startedAt, endedAt) {
+    const start = this.formatWalkTime(startedAt).slice(11, 16);
+    const end = this.formatWalkTime(endedAt).slice(11, 16);
+    if (!start && !end) return "";
+    return `${start}-${end}`;
+  },
+
+  buildWalkName(startedAt, endedAt) {
+    const date = this.formatWalkDate(startedAt || endedAt);
+    const timeRange = this.formatWalkTimeRange(startedAt, endedAt);
+    return [date, timeRange].filter(Boolean).join(" ");
   },
 
   startRecording() {
@@ -491,6 +504,7 @@ Page({
   },
 
   stopRecording() {
+    const startedAt = this.data.walkStartedAt;
     const endedAt = new Date().toISOString();
 
     wx.offLocationChange(this.handleLocationChange);
@@ -504,7 +518,7 @@ Page({
 
     this.setData({
       isWalkDialogVisible: true,
-      walkName: `CityWalk ${new Date().toLocaleString()}`,
+      walkName: this.buildWalkName(startedAt, endedAt),
       walkDescription: ""
     });
   },
@@ -534,7 +548,6 @@ Page({
   confirmWalkSave() {
     const name = this.data.walkName.trim();
     const description = this.data.walkDescription.trim();
-    const walkDescription = this.buildWalkDescription(description, this.data.walkStartedAt, this.data.walkEndedAt);
 
     if (!name) {
       wx.showToast({ title: "请输入路线名称", icon: "none" });
@@ -548,7 +561,7 @@ Page({
     try {
       const savedWalk = saveLocalWalk({
         name,
-        description: walkDescription,
+        description: description || null,
         points: this.data.trackPoints
       });
 
