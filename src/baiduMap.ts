@@ -5,10 +5,14 @@ declare global {
   }
 
   namespace BMapGL {
+    const BMAP_NORMAL_MAP: MapType;
+    const BMAP_SATELLITE_MAP: MapType;
+
     class Map {
       constructor(container: string | HTMLElement);
       centerAndZoom(point: Point, zoom: number): void;
       enableScrollWheelZoom(enable?: boolean): void;
+      setMapType(mapType: MapType): void;
       addOverlay(overlay: Overlay): void;
       removeOverlay(overlay: Overlay): void;
       addEventListener(event: string, handler: (event: MapMouseEvent) => void): void;
@@ -49,6 +53,7 @@ declare global {
     }
 
     interface Overlay {}
+    interface MapType {}
 
     type PolylineOptions = {
       strokeColor?: string;

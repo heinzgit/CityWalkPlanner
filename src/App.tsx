@@ -15,6 +15,7 @@ import {
   LocateFixed,
   Minus,
   Plus,
+  Satellite,
   Route,
   Save,
   Trash2
@@ -56,6 +57,7 @@ const editPointIcon =
     '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#f04444" stroke="#ffffff" stroke-width="2"/></svg>'
   );
 type RouteMode = "view" | "edit";
+type MapTypeMode = "normal" | "satellite";
 
 type OverlayBundle = {
   polyline: BMapGL.Polyline;
@@ -380,6 +382,10 @@ export function App() {
   const [isMapReady, setIsMapReady] = useState(false);
   const [dataStatus, setDataStatus] = useState("正在加载路线");
   const [routeMode, setRouteMode] = useState<RouteMode>("view");
+  const [mapTypeMode, setMapTypeMode] = useState<MapTypeMode>(() => {
+    const stored = window.localStorage.getItem("citywalk-map-type");
+    return stored === "satellite" ? "satellite" : "normal";
+  });
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
   const [draggedRouteId, setDraggedRouteId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<RouteDropTarget | null>(null);
@@ -415,6 +421,10 @@ export function App() {
   useEffect(() => {
     routesRef.current = routes;
   }, [routes]);
+
+  useEffect(() => {
+    window.localStorage.setItem("citywalk-map-type", mapTypeMode);
+  }, [mapTypeMode]);
 
   useEffect(() => {
     setColorDraft(selectedRoute?.color ?? "");
@@ -555,6 +565,7 @@ export function App() {
         const map = new BMap.Map(mapContainerRef.current);
         map.centerAndZoom(new BMap.Point(defaultCenter.lng, defaultCenter.lat), 13);
         map.enableScrollWheelZoom(true);
+        map.setMapType(mapTypeMode === "satellite" ? BMap.BMAP_SATELLITE_MAP : BMap.BMAP_NORMAL_MAP);
         mapRef.current = map;
         setMapStatus("地图已加载");
         setIsMapReady(true);
@@ -568,7 +579,14 @@ export function App() {
     return () => {
       disposed = true;
     };
-  }, [authStatus, currentUser]);
+  }, [authStatus, currentUser, mapTypeMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const BMap = window.BMapGL;
+    if (!isMapReady || !map || !BMap) return;
+    map.setMapType(mapTypeMode === "satellite" ? BMap.BMAP_SATELLITE_MAP : BMap.BMAP_NORMAL_MAP);
+  }, [isMapReady, mapTypeMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -969,6 +987,15 @@ export function App() {
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />
             聚焦路线
+          </button>
+          <button
+            type="button"
+            className={mapTypeMode === "satellite" ? "active" : ""}
+            onClick={() => setMapTypeMode((current) => (current === "normal" ? "satellite" : "normal"))}
+            title={mapTypeMode === "satellite" ? "切换到普通地图" : "切换到卫星地图"}
+          >
+            <Satellite size={16} />
+            {mapTypeMode === "satellite" ? "卫星图" : "普通图"}
           </button>
           <span className={`mode-pill ${routeMode}`}>{routeMode === "edit" ? "编辑中" : "显示模式"}</span>
         </div>

@@ -405,6 +405,17 @@ button {
   color: #1b3558;
 }
 
+.map-toolbar button.active {
+  border-color: #9ec0ff;
+  background: #eaf2ff;
+  color: #0f5fd8;
+}
+
+.map-toolbar button:hover {
+  border-color: #9fb4cf;
+  background: #f7fafd;
+}
+
 .mode-pill {
   display: inline-flex;
   align-items: center;
