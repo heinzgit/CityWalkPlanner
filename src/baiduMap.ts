@@ -54,6 +54,11 @@ declare global {
       strokeColor?: string;
       strokeWeight?: number;
       strokeOpacity?: number;
+      strokeTexture?: {
+        url: string;
+        width: number;
+        height: number;
+      };
     };
 
     type MarkerOptions = {

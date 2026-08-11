@@ -188,6 +188,19 @@ function getInputColor(color: string) {
   return colorPattern.test(color) ? color : "#1677ff";
 }
 
+function createDirectionTexture(color: string) {
+  const arrowColor = getInputColor(color);
+  return (
+    "data:image/svg+xml;charset=UTF-8," +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="64" viewBox="0 0 16 64">
+        <path d="M8 2v46" fill="none" stroke="${arrowColor}" stroke-width="5" stroke-linecap="round"/>
+        <path d="M2 47l6 14 6-14z" fill="${arrowColor}"/>
+      </svg>`
+    )
+  );
+}
+
 function TreeView({
   nodes,
   selectedRouteId,
@@ -373,6 +386,7 @@ export function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [colorDraft, setColorDraft] = useState("");
+  const [showRouteDirectionArrows, setShowRouteDirectionArrows] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<BMapGL.Map | null>(null);
@@ -580,10 +594,20 @@ export function App() {
         }
 
         const points = route.points.map((point) => new BMap.Point(point.lng, point.lat));
+        const shouldShowDirectionArrows = showRouteDirectionArrows && route.id === selectedRouteId && points.length > 1;
         const polyline = new BMap.Polyline(points, {
           strokeColor: route.id === selectedRouteId ? route.color : route.color,
           strokeWeight: route.id === selectedRouteId ? 7 : 5,
-          strokeOpacity: route.id === selectedRouteId ? 0.95 : 0.72
+          strokeOpacity: route.id === selectedRouteId ? 0.95 : 0.72,
+          ...(shouldShowDirectionArrows
+            ? {
+                strokeTexture: {
+                  url: createDirectionTexture(route.color),
+                  width: 16,
+                  height: 64
+                }
+              }
+            : {})
         });
         polyline.addEventListener("click", () => {
           if (skipNextMapClickRef.current) return;
@@ -654,7 +678,7 @@ export function App() {
         markers.forEach((marker) => map.addOverlay(marker));
         overlaysRef.current.set(route.id, { polyline, markers });
       });
-  }, [routes, selectedRouteId, routeMode, selectedPointIndex, isMapReady, updateRoutePoint]);
+  }, [routes, selectedRouteId, routeMode, selectedPointIndex, isMapReady, updateRoutePoint, showRouteDirectionArrows]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1039,6 +1063,14 @@ export function App() {
                 />
               </div>
             </div>
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={showRouteDirectionArrows}
+                onChange={(event) => setShowRouteDirectionArrows(event.target.checked)}
+              />
+              <span>显示方向箭头</span>
+            </label>
             <div className="route-summary">
               <span>{selectedRoute.points.length}</span>
               <div>

@@ -477,6 +477,22 @@ button {
   outline: 3px solid #e5f0ff;
 }
 
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px 0;
+  color: #566273;
+  font-size: 13px;
+}
+
+.checkbox-field input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #1167d8;
+}
+
 .swatches {
   display: flex;
   gap: 7px;
