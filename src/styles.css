@@ -213,9 +213,13 @@ button {
   padding: 10px 8px 18px;
 }
 
+.file-input {
+  display: none;
+}
+
 .tree-row {
   display: grid;
-  grid-template-columns: 24px 28px minmax(0, 1fr) repeat(4, 28px);
+  grid-template-columns: 24px 28px minmax(0, 1fr) repeat(5, 28px);
   align-items: center;
   gap: 4px;
   min-height: 34px;
@@ -223,7 +227,7 @@ button {
   color: #2c3642;
 }
 
-.tree-row .icon-button:not(.visibility):not(.disclosure):not(.danger):not(.folder-action):not(.folder-export),
+.tree-row .icon-button:not(.visibility):not(.disclosure):not(.danger):not(.folder-action):not(.folder-export):not(.folder-rename):not(.folder-create-route),
 .tree-row .tree-spacer {
   opacity: 0;
 }
@@ -236,7 +240,9 @@ button {
 }
 
 .tree-row .folder-action,
-.tree-row .folder-export {
+.tree-row .folder-export,
+.tree-row .folder-rename,
+.tree-row .folder-create-route {
   opacity: 1;
 }
 

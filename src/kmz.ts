@@ -1,5 +1,18 @@
 import type { Folder, RoutePlan } from "./types";
 
+export type ImportedKmzRoute = {
+  name: string;
+  description: string | null;
+  color: string;
+  points: { lng: number; lat: number }[];
+};
+
+export type ImportedKmzFolder = {
+  name: string;
+  routes: ImportedKmzRoute[];
+  children: ImportedKmzFolder[];
+};
+
 function escapeXml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -96,6 +109,34 @@ function gcj02ToWgs84(lng: number, lat: number) {
 function bd09ToWgs84(lng: number, lat: number) {
   const gcj02 = bd09ToGcj02(lng, lat);
   return gcj02ToWgs84(gcj02.lng, gcj02.lat);
+}
+
+function wgs84ToGcj02(lng: number, lat: number) {
+  if (outOfChina(lng, lat)) return { lng, lat };
+
+  const a = 6378245.0;
+  const ee = 0.00669342162296594323;
+  const dLat = transformLat(lng - 105.0, lat - 35.0);
+  const dLng = transformLng(lng - 105.0, lat - 35.0);
+  const radLat = (lat / 180.0) * Math.PI;
+  let magic = Math.sin(radLat);
+  magic = 1 - ee * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  return {
+    lng: lng + ((dLng * 180.0) / ((a / sqrtMagic) * Math.cos(radLat) * Math.PI)),
+    lat: lat + ((dLat * 180.0) / (((a * (1 - ee)) / (magic * sqrtMagic)) * Math.PI))
+  };
+}
+
+function gcj02ToBd09(lng: number, lat: number) {
+  const z = Math.sqrt(lng * lng + lat * lat) + 0.00002 * Math.sin(lat * Math.PI);
+  const theta = Math.atan2(lat, lng) + 0.000003 * Math.cos(lng * Math.PI);
+  return { lng: z * Math.cos(theta) + 0.0065, lat: z * Math.sin(theta) + 0.006 };
+}
+
+function wgs84ToBd09(lng: number, lat: number) {
+  const gcj02 = wgs84ToGcj02(lng, lat);
+  return gcj02ToBd09(gcj02.lng, gcj02.lat);
 }
 
 function buildRoutePlacemark(route: RoutePlan, styleId: string) {
@@ -310,4 +351,111 @@ export function createFolderKmz(rootFolder: Folder, folders: Folder[], routes: R
   const zip = buildZip([{ name: "doc.kml", data: encodeUtf8(kml) }]);
   const fileName = `${sanitizeFileName(rootFolder.name)}.kmz`;
   return { blob: zip, fileName };
+}
+
+function childElements(element: Element, name: string) {
+  return Array.from(element.children).filter((child) => child.localName === name);
+}
+
+function childText(element: Element, name: string) {
+  return childElements(element, name)[0]?.textContent?.trim() ?? "";
+}
+
+function kmlColorToHex(value: string) {
+  const normalized = value.trim().replace(/^#/, "");
+  if (/^[\da-f]{8}$/i.test(normalized)) {
+    return `#${normalized.slice(6, 8)}${normalized.slice(4, 6)}${normalized.slice(2, 4)}`.toUpperCase();
+  }
+  if (/^[\da-f]{6}$/i.test(normalized)) return `#${normalized}`.toUpperCase();
+  return "#1677FF";
+}
+
+function parseCoordinates(value: string) {
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((coordinate) => coordinate.split(","))
+    .map(([rawLng, rawLat]) => ({ lng: Number(rawLng), lat: Number(rawLat) }))
+    .filter((point) => Number.isFinite(point.lng) && Number.isFinite(point.lat) && point.lng >= -180 && point.lng <= 180 && point.lat >= -90 && point.lat <= 90)
+    .map((point) => wgs84ToBd09(point.lng, point.lat));
+}
+
+function parseKml(kml: string, fallbackName: string): ImportedKmzFolder[] {
+  const document = new DOMParser().parseFromString(kml, "application/xml");
+  if (document.querySelector("parsererror")) throw new Error("KMZ 中的 KML 文件格式无效");
+
+  const kmlRoot = document.documentElement;
+  if (kmlRoot.localName !== "kml") throw new Error("KMZ 中未找到 KML 内容");
+  const kmlDocument = childElements(kmlRoot, "Document")[0] ?? kmlRoot;
+  const styles = new Map<string, string>();
+  Array.from(kmlDocument.getElementsByTagNameNS("*", "Style")).forEach((style) => {
+    const id = style.getAttribute("id");
+    const color = style.getElementsByTagNameNS("*", "color")[0]?.textContent;
+    if (id && color) styles.set(id, kmlColorToHex(color));
+  });
+
+  const parsePlacemark = (placemark: Element): ImportedKmzRoute | null => {
+    const lineString = placemark.getElementsByTagNameNS("*", "LineString")[0];
+    const coordinates = lineString ? childText(lineString, "coordinates") : "";
+    const points = parseCoordinates(coordinates);
+    if (points.length < 2) return null;
+    const styleId = childText(placemark, "styleUrl").replace(/^#/, "");
+    return {
+      name: childText(placemark, "name") || "未命名路线",
+      description: childText(placemark, "description") || null,
+      color: styles.get(styleId) ?? "#1677FF",
+      points
+    };
+  };
+
+  const parseFolder = (folder: Element): ImportedKmzFolder => ({
+    name: childText(folder, "name") || "未命名文件夹",
+    routes: childElements(folder, "Placemark").map(parsePlacemark).filter((route): route is ImportedKmzRoute => route !== null),
+    children: childElements(folder, "Folder").map(parseFolder)
+  });
+
+  const folders = childElements(kmlDocument, "Folder").map(parseFolder);
+  const rootRoutes = childElements(kmlDocument, "Placemark").map(parsePlacemark).filter((route): route is ImportedKmzRoute => route !== null);
+  if (rootRoutes.length > 0) {
+    folders.unshift({ name: childText(kmlDocument, "name") || fallbackName, routes: rootRoutes, children: [] });
+  }
+  if (folders.length === 0) throw new Error("KMZ 中没有可导入的路线");
+  return folders;
+}
+
+async function extractKml(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 0;
+
+  while (offset + 30 <= bytes.length && view.getUint32(offset, true) === 0x04034b50) {
+    const flags = view.getUint16(offset + 6, true);
+    const method = view.getUint16(offset + 8, true);
+    const compressedSize = view.getUint32(offset + 18, true);
+    const nameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+    if (flags & 0x0008) throw new Error("该 KMZ 使用了不受支持的 ZIP 数据描述格式");
+    const nameStart = offset + 30;
+    const dataStart = nameStart + nameLength + extraLength;
+    const name = new TextDecoder("utf-8").decode(bytes.slice(nameStart, nameStart + nameLength));
+    if (dataStart + compressedSize > bytes.length) throw new Error("KMZ 压缩包不完整");
+
+    if (name.toLowerCase().endsWith(".kml")) {
+      const data = bytes.slice(dataStart, dataStart + compressedSize);
+      if (method === 0) return new TextDecoder("utf-8").decode(data);
+      if (method === 8 && "DecompressionStream" in window) {
+        return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+      }
+      throw new Error("该 KMZ 的压缩格式不受支持");
+    }
+    offset = dataStart + compressedSize;
+  }
+
+  throw new Error("KMZ 中未找到 KML 文件");
+}
+
+export async function parseKmzFile(file: File) {
+  if (!file.name.toLowerCase().endsWith(".kmz")) throw new Error("请选择 .kmz 文件");
+  const kml = await extractKml(file);
+  return parseKml(kml, sanitizeFileName(file.name.replace(/\.kmz$/i, "")));
 }

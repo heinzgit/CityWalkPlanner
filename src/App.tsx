@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type { ChangeEvent, CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -17,13 +17,15 @@ import {
   Minus,
   Plus,
   Satellite,
+  Upload,
   Route,
   Save,
   Trash2
 } from "lucide-react";
 import { api } from "./api";
 import { loadBaiduMap } from "./baiduMap";
-import { createFolderKmz, createRouteKmz } from "./kmz";
+import { createFolderKmz, createRouteKmz, parseKmzFile } from "./kmz";
+import type { ImportedKmzFolder } from "./kmz";
 import { buildTree, findRoute, getNextVisibility } from "./tree";
 import type { RoutePlan, RoutePoint, TreeNode, User, VisibilityState } from "./types";
 
@@ -214,6 +216,7 @@ function TreeView({
   onCreateFolder,
   onCreateRoute,
   onExportFolderKmz,
+  onRenameFolder,
   onDeleteFolder,
   onDeleteRoute,
   expandedFolderIds,
@@ -238,6 +241,7 @@ function TreeView({
   onCreateFolder: (parentId: string | null) => void;
   onCreateRoute: (folderId: string | null) => void;
   onExportFolderKmz: (folderId: string) => void;
+  onRenameFolder: (folderId: string, currentName: string) => void;
   onDeleteFolder: (folderId: string) => void;
   onDeleteRoute: (routeId: string) => void;
   expandedFolderIds: Set<string>;
@@ -381,6 +385,9 @@ function TreeView({
                 <button className="icon-button folder-export" type="button" title="导出文件夹 KMZ" onClick={() => onExportFolderKmz(node.id)}>
                   <Download size={15} />
                 </button>
+                <button className="icon-button folder-rename" type="button" title="重命名文件夹" onClick={() => onRenameFolder(node.id, node.name)}>
+                  <Edit3 size={15} />
+                </button>
                 {isTopLevelFolder ? (
                   <button className="icon-button folder-action" type="button" title="新建二级目录" onClick={() => onCreateFolder(node.id)}>
                     <FolderPlus size={15} />
@@ -388,7 +395,7 @@ function TreeView({
                 ) : (
                   <span className="tree-spacer" />
                 )}
-                <button className="icon-button" type="button" title="新建路线" onClick={() => onCreateRoute(node.id)}>
+                <button className="icon-button folder-create-route" type="button" title="新建路线" onClick={() => onCreateRoute(node.id)}>
                   <Plus size={15} />
                 </button>
                 <button className="icon-button danger" type="button" title="删除文件夹" onClick={() => onDeleteFolder(node.id)}>
@@ -397,6 +404,7 @@ function TreeView({
               </>
             ) : (
               <>
+                <span className="tree-spacer" />
                 <span className="tree-spacer" />
                 <span className="tree-spacer" />
                 <button className="icon-button danger" type="button" title="删除路线" onClick={() => onDeleteRoute(node.id)}>
@@ -414,6 +422,7 @@ function TreeView({
               onCreateFolder={onCreateFolder}
               onCreateRoute={onCreateRoute}
               onExportFolderKmz={onExportFolderKmz}
+              onRenameFolder={onRenameFolder}
               onDeleteFolder={onDeleteFolder}
               onDeleteRoute={onDeleteRoute}
               expandedFolderIds={expandedFolderIds}
@@ -465,6 +474,7 @@ export function App() {
   const [draggedFolderParentId, setDraggedFolderParentId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<RouteDropTarget | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [colorDraft, setColorDraft] = useState("");
   const [showRouteDirectionArrows, setShowRouteDirectionArrows] = useState(false);
@@ -475,6 +485,7 @@ export function App() {
   const clickHandlerRef = useRef<((event: BMapGL.MapMouseEvent) => void) | null>(null);
   const skipNextMapClickRef = useRef(false);
   const routesRef = useRef<RoutePlan[]>([]);
+  const kmzInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedRoute = useMemo(() => findRoute(routes, selectedRouteId), [routes, selectedRouteId]);
   const treeNodes = useMemo(() => buildTree(folders, routes), [folders, routes]);
@@ -889,6 +900,17 @@ export function App() {
     await refreshTree();
   };
 
+  const renameFolder = async (folderId: string, currentName: string) => {
+    const name = window.prompt("文件夹名称", currentName)?.trim();
+    if (!name || name === currentName) return;
+    try {
+      await api.updateFolder(folderId, { name });
+      await refreshTree();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "重命名文件夹失败");
+    }
+  };
+
   const deleteRoute = async (routeId: string) => {
     if (!window.confirm("删除该路线？")) return;
     await api.deleteRoute(routeId);
@@ -975,6 +997,49 @@ export function App() {
     window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
   };
 
+  const importKmz = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setIsImporting(true);
+    setError(null);
+    try {
+      const importedFolders = await parseKmzFile(file);
+      const expandedIds: string[] = [];
+      let lastRouteId: string | null = null;
+      let routeCount = 0;
+      const importFolder = async (folder: ImportedKmzFolder, parentId: string | null, level: number): Promise<void> => {
+        if (level > 1) throw new Error("当前仅支持导入两级文件夹结构");
+        const createdFolder = await api.createFolder({ name: folder.name, parentId });
+        expandedIds.push(createdFolder.id);
+        for (const route of folder.routes) {
+          const createdRoute = await api.createRouteFromWalk({
+            name: route.name,
+            description: route.description,
+            folderId: createdFolder.id,
+            color: route.color,
+            points: route.points
+          });
+          lastRouteId = createdRoute.id;
+          routeCount += 1;
+        }
+        for (const child of folder.children) await importFolder(child, createdFolder.id, level + 1);
+      };
+
+      for (const folder of importedFolders) await importFolder(folder, null, 0);
+      if (routeCount === 0) throw new Error("KMZ 中没有至少包含两个坐标点的路线");
+      await refreshTree();
+      setExpandedFolderIds((current) => new Set([...current, ...expandedIds]));
+      setSelectedRouteId(lastRouteId);
+      setDataStatus(`已导入 ${routeCount} 条路线`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "KMZ 导入失败");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const submitAuth = async (payload: { username: string; password: string; displayName?: string }) => {
     setIsAuthSubmitting(true);
     setAuthError(null);
@@ -1046,6 +1111,10 @@ export function App() {
             <p className="directory-hint">拖动一级目录可归入二级；同级二级目录可上下拖动排序</p>
           </div>
           <div className="header-actions">
+            <input ref={kmzInputRef} className="file-input" type="file" accept=".kmz,application/vnd.google-earth.kmz" onChange={importKmz} />
+            <button className="icon-button primary" type="button" title="导入 KMZ" disabled={isImporting} onClick={() => kmzInputRef.current?.click()}>
+              <Upload size={17} />
+            </button>
             <button className="icon-button" type="button" title="退出登录" onClick={logout}>
               <LogOut size={17} />
             </button>
@@ -1072,6 +1141,7 @@ export function App() {
           onCreateFolder={createFolder}
           onCreateRoute={createRoute}
           onExportFolderKmz={exportFolderKmz}
+          onRenameFolder={renameFolder}
           onDeleteFolder={deleteFolder}
           onDeleteRoute={deleteRoute}
           expandedFolderIds={expandedFolderIds}
