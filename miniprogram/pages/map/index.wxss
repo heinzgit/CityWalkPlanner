@@ -148,6 +148,22 @@
   box-shadow: inset 4rpx 0 0 #2f80ed;
 }
 
+.folder-panel-header.secondary-folder {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(226, 234, 243, 0.9);
+}
+
+.folder-panel-header.secondary-folder.expanded {
+  border-color: rgba(178, 207, 243, 0.92);
+  background: rgba(241, 247, 253, 0.88);
+  box-shadow: inset 4rpx 0 0 #6a9bce;
+}
+
+.folder-panel-header.local-folder {
+  border-color: rgba(153, 246, 228, 0.9);
+  background: rgba(236, 253, 245, 0.76);
+}
+
 .folder-panel-header:active {
   background: rgba(221, 235, 247, 0.8);
 }
@@ -172,6 +188,8 @@
 }
 
 .folder-panel-name {
+  min-width: 0;
+  flex: 1;
   color: #243449;
   font-size: 30rpx;
   font-weight: 800;
@@ -179,6 +197,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.folder-panel-name-row {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.folder-level-tag {
+  flex-shrink: 0;
+  padding: 3rpx 8rpx;
+  border-radius: 999rpx;
+  background: rgba(207, 225, 245, 0.72);
+  color: #4e7095;
+  font-size: 18rpx;
+  font-weight: 700;
+}
+
+.local-folder .folder-level-tag {
+  background: rgba(153, 246, 228, 0.58);
+  color: #0f766e;
 }
 
 .folder-panel-count {

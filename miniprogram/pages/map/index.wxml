@@ -24,7 +24,7 @@
       <view>
         <view class="route-panel-title">路线列表</view>
         <view class="route-panel-subtitle">
-          {{currentUser ? currentUser.displayName || currentUser.username : '未登录'}} · {{displayRoutes.length}} 条可查看路线
+          {{currentUser ? currentUser.displayName || currentUser.username : '未登录'}} · 一级目录 / 二级目录 · {{displayRoutes.length}} 条可查看路线
         </view>
       </view>
       <view class="route-panel-actions">
@@ -47,14 +47,17 @@
       <block wx:for="{{routeListRows}}" wx:key="id">
         <view
           wx:if="{{item.type === 'folder'}}"
-          class="folder-panel-header {{item.isExpanded ? 'expanded' : ''}}"
+          class="folder-panel-header {{item.isExpanded ? 'expanded' : ''}} {{item.level === 1 ? 'secondary-folder' : ''}} {{item.isLocalFolder ? 'local-folder' : ''}}"
           style="margin-left: {{item.level * 18}}rpx"
           data-folder-id="{{item.id}}"
           bindtap="toggleFolderExpanded"
         >
           <text class="folder-disclosure">{{item.isExpanded ? '⌄' : '›'}}</text>
           <view class="folder-panel-main">
-            <view class="folder-panel-name">{{item.name}}</view>
+            <view class="folder-panel-name-row">
+              <view class="folder-panel-name">{{item.name}}</view>
+              <view class="folder-level-tag">{{item.directoryLabel}}</view>
+            </view>
             <view class="folder-panel-count">{{item.routeCount}}</view>
           </view>
         </view>

@@ -67,7 +67,8 @@ type OverlayBundle = {
 
 type RouteDropTarget =
   | { type: "folder"; folderId: string | null }
-  | { type: "route"; folderId: string | null; routeId: string; position: "before" | "after" };
+  | { type: "route"; folderId: string | null; routeId: string; position: "before" | "after" }
+  | { type: "folder-order"; parentId: string; folderId: string; position: "before" | "after" };
 
 type AuthMode = "login" | "register";
 
@@ -216,11 +217,16 @@ function TreeView({
   expandedFolderIds,
   onToggleFolderExpanded,
   draggedRouteId,
+  draggedFolderId,
+  draggedFolderParentId,
   dropTarget,
   onRouteDragStart,
+  onFolderDragStart,
   onRouteDragEnd,
   onRouteDropTarget,
   onRouteDrop,
+  onFolderDrop,
+  onFolderReorder,
   level = 0
 }: {
   nodes: TreeNode[];
@@ -234,55 +240,105 @@ function TreeView({
   expandedFolderIds: Set<string>;
   onToggleFolderExpanded: (folderId: string) => void;
   draggedRouteId: string | null;
+  draggedFolderId: string | null;
+  draggedFolderParentId: string | null;
   dropTarget: RouteDropTarget | null;
   onRouteDragStart: (routeId: string) => void;
+  onFolderDragStart: (folderId: string, parentId: string | null) => void;
   onRouteDragEnd: () => void;
   onRouteDropTarget: (target: RouteDropTarget | null) => void;
   onRouteDrop: (routeId: string, target: RouteDropTarget) => void;
+  onFolderDrop: (folderId: string, targetFolderId: string) => void;
+  onFolderReorder: (folderId: string, target: Extract<RouteDropTarget, { type: "folder-order" }>) => void;
   level?: number;
 }) {
+  const isTopLevelFolder = level === 0;
+
   return (
     <div className="tree-list">
       {nodes.map((node) => (
         <div key={`${node.type}-${node.id}`}>
           <div
             className={`tree-row ${node.type === "route" && node.id === selectedRouteId ? "selected" : ""} ${
-              node.type === "route" && draggedRouteId === node.id ? "dragging" : ""
+              (node.type === "route" && draggedRouteId === node.id) || (node.type === "folder" && draggedFolderId === node.id)
+                ? "dragging"
+                : ""
             } ${
               node.type === "folder" && dropTarget?.type === "folder" && dropTarget.folderId === node.id ? "drop-inside" : ""
             } ${
-              node.type === "route" && dropTarget?.type === "route" && dropTarget.routeId === node.id
+              ((node.type === "route" && dropTarget?.type === "route" && dropTarget.routeId === node.id) ||
+                (node.type === "folder" && dropTarget?.type === "folder-order" && dropTarget.folderId === node.id))
                 ? `drop-${dropTarget.position}`
                 : ""
             }`}
             style={{ paddingLeft: 10 + level * 18 }}
-            draggable={node.type === "route"}
+            draggable={node.type === "route" || (node.type === "folder" && level <= 1)}
             onDragStart={(event) => {
-              if (node.type !== "route") return;
+              if (node.type === "folder") {
+                if (level > 1) return;
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("application/x-citywalk-folder", node.id);
+                onFolderDragStart(node.id, node.parentId);
+                return;
+              }
               event.dataTransfer.effectAllowed = "move";
               event.dataTransfer.setData("text/plain", node.id);
               onRouteDragStart(node.id);
             }}
             onDragEnd={onRouteDragEnd}
             onDragOver={(event) => {
-              if (!draggedRouteId || (node.type === "route" && node.id === draggedRouteId)) return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-              if (node.type === "folder") {
-                onRouteDropTarget({ type: "folder", folderId: node.id });
+              if (!draggedRouteId && !draggedFolderId) return;
+              if (node.type === "route") {
+                if (!draggedRouteId || node.id === draggedRouteId) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                const rect = event.currentTarget.getBoundingClientRect();
+                onRouteDropTarget({
+                  type: "route",
+                  folderId: node.folderId,
+                  routeId: node.id,
+                  position: event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+                });
                 return;
               }
-              const rect = event.currentTarget.getBoundingClientRect();
-              onRouteDropTarget({
-                type: "route",
-                folderId: node.folderId,
-                routeId: node.id,
-                position: event.clientY < rect.top + rect.height / 2 ? "before" : "after"
-              });
+
+              if (draggedFolderId) {
+                if (node.id === draggedFolderId) return;
+                if (isTopLevelFolder && draggedFolderParentId === null) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  onRouteDropTarget({ type: "folder", folderId: node.id });
+                  return;
+                }
+                if (!isTopLevelFolder && node.parentId === draggedFolderParentId && node.parentId) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  onRouteDropTarget({
+                    type: "folder-order",
+                    parentId: node.parentId,
+                    folderId: node.id,
+                    position: event.clientY < rect.top + rect.height / 2 ? "before" : "after"
+                  });
+                }
+                return;
+              }
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              onRouteDropTarget({ type: "folder", folderId: node.id });
             }}
             onDrop={(event) => {
-              if (!dropTarget) return;
+              if (!dropTarget || (dropTarget.type !== "folder" && dropTarget.type !== "folder-order" && !draggedRouteId)) return;
               event.preventDefault();
+              const folderId = event.dataTransfer.getData("application/x-citywalk-folder") || draggedFolderId;
+              if (folderId && dropTarget.type === "folder" && dropTarget.folderId) {
+                onFolderDrop(folderId, dropTarget.folderId);
+                return;
+              }
+              if (folderId && dropTarget.type === "folder-order") {
+                onFolderReorder(folderId, dropTarget);
+                return;
+              }
               const routeId = event.dataTransfer.getData("text/plain") || draggedRouteId;
               if (routeId) onRouteDrop(routeId, dropTarget);
             }}
@@ -319,9 +375,13 @@ function TreeView({
             </button>
             {node.type === "folder" ? (
               <>
-                <button className="icon-button" type="button" title="新建子文件夹" onClick={() => onCreateFolder(node.id)}>
-                  <FolderPlus size={15} />
-                </button>
+                {isTopLevelFolder ? (
+                  <button className="icon-button folder-action" type="button" title="新建二级目录" onClick={() => onCreateFolder(node.id)}>
+                    <FolderPlus size={15} />
+                  </button>
+                ) : (
+                  <span className="tree-spacer" />
+                )}
                 <button className="icon-button" type="button" title="新建路线" onClick={() => onCreateRoute(node.id)}>
                   <Plus size={15} />
                 </button>
@@ -352,11 +412,16 @@ function TreeView({
               expandedFolderIds={expandedFolderIds}
               onToggleFolderExpanded={onToggleFolderExpanded}
               draggedRouteId={draggedRouteId}
+              draggedFolderId={draggedFolderId}
+              draggedFolderParentId={draggedFolderParentId}
               dropTarget={dropTarget}
               onRouteDragStart={onRouteDragStart}
+              onFolderDragStart={onFolderDragStart}
               onRouteDragEnd={onRouteDragEnd}
               onRouteDropTarget={onRouteDropTarget}
               onRouteDrop={onRouteDrop}
+              onFolderDrop={onFolderDrop}
+              onFolderReorder={onFolderReorder}
               level={level + 1}
             />
           ) : null}
@@ -389,6 +454,8 @@ export function App() {
   });
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
   const [draggedRouteId, setDraggedRouteId] = useState<string | null>(null);
+  const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
+  const [draggedFolderParentId, setDraggedFolderParentId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<RouteDropTarget | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -506,6 +573,47 @@ export function App() {
       await refreshTree();
     },
     [refreshTree]
+  );
+
+  const moveFolderToSecondLevel = useCallback(
+    async (folderId: string, parentId: string) => {
+      if (folderId === parentId) return;
+      setDropTarget(null);
+      setDraggedFolderId(null);
+      setDraggedFolderParentId(null);
+      await api.updateFolder(folderId, { parentId });
+      await refreshTree();
+      setExpandedFolderIds((current) => new Set([...current, parentId]));
+    },
+    [refreshTree]
+  );
+
+  const reorderFolder = useCallback(
+    async (draggedId: string, target: Extract<RouteDropTarget, { type: "folder-order" }>) => {
+      const siblings = folders
+        .filter((folder) => folder.parentId === target.parentId && folder.id !== draggedId)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "zh-CN"));
+      const targetIndex = siblings.findIndex((folder) => folder.id === target.folderId);
+      if (targetIndex < 0) return;
+
+      siblings.splice(target.position === "before" ? targetIndex : targetIndex + 1, 0, {
+        ...folders.find((folder) => folder.id === draggedId)!,
+        parentId: target.parentId
+      });
+      const folderIds = siblings.map((folder) => folder.id);
+      setFolders((currentFolders) =>
+        currentFolders.map((folder) => {
+          const sortOrder = folderIds.indexOf(folder.id);
+          return sortOrder < 0 ? folder : { ...folder, sortOrder };
+        })
+      );
+      setDropTarget(null);
+      setDraggedFolderId(null);
+      setDraggedFolderParentId(null);
+      await api.reorderFolders({ parentId: target.parentId, folderIds });
+      await refreshTree();
+    },
+    [folders, refreshTree]
   );
 
   const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -748,10 +856,11 @@ export function App() {
   }, [selectedRoute]);
 
   const createFolder = async (parentId: string | null) => {
-    const name = window.prompt("文件夹名称", "新的文件夹");
+    const name = window.prompt(parentId ? "二级目录名称" : "一级目录名称", parentId ? "新的二级目录" : "新的一级目录");
     if (!name) return;
-    await api.createFolder({ name, parentId });
+    const folder = await api.createFolder({ name, parentId });
     await refreshTree();
+    setExpandedFolderIds((current) => new Set([...current, folder.id, ...(parentId ? [parentId] : [])]));
   };
 
   const createRoute = async (folderId: string | null) => {
@@ -759,6 +868,9 @@ export function App() {
     if (!name) return;
     const route = await api.createRoute({ name, folderId, color: colorChoices[routes.length % colorChoices.length] });
     await refreshTree();
+    if (folderId) {
+      setExpandedFolderIds((current) => new Set([...current, folderId]));
+    }
     setSelectedRouteId(route.id);
     setSelectedPointIndex(null);
     setRouteMode("edit");
@@ -912,6 +1024,7 @@ export function App() {
             <p>
               {currentUser.displayName || currentUser.username} · {dataStatus}
             </p>
+            <p className="directory-hint">拖动一级目录可归入二级；同级二级目录可上下拖动排序</p>
           </div>
           <div className="header-actions">
             <button className="icon-button" type="button" title="退出登录" onClick={logout}>
@@ -920,7 +1033,7 @@ export function App() {
             <button className="icon-button" type="button" title="隐藏左边栏" onClick={() => setIsSidebarCollapsed(true)}>
               <PanelLeftClose size={17} />
             </button>
-            <button className="icon-button primary" type="button" title="新建根文件夹" onClick={() => createFolder(null)}>
+            <button className="icon-button primary" type="button" title="新建一级目录" onClick={() => createFolder(null)}>
               <FolderPlus size={17} />
             </button>
             <button className="icon-button primary" type="button" title="新建路线" onClick={() => createRoute(null)}>
@@ -944,16 +1057,36 @@ export function App() {
           expandedFolderIds={expandedFolderIds}
           onToggleFolderExpanded={toggleFolderExpanded}
           draggedRouteId={draggedRouteId}
+          draggedFolderId={draggedFolderId}
+          draggedFolderParentId={draggedFolderParentId}
           dropTarget={dropTarget}
           onRouteDragStart={setDraggedRouteId}
+          onFolderDragStart={(folderId, parentId) => {
+            setDraggedFolderId(folderId);
+            setDraggedFolderParentId(parentId);
+          }}
           onRouteDragEnd={() => {
             setDraggedRouteId(null);
+            setDraggedFolderId(null);
+            setDraggedFolderParentId(null);
             setDropTarget(null);
           }}
           onRouteDropTarget={setDropTarget}
           onRouteDrop={(routeId, target) => {
             reorderRoute(routeId, target).catch((caught) => {
               setError(caught instanceof Error ? caught.message : "移动路线失败");
+              refreshTree();
+            });
+          }}
+          onFolderDrop={(folderId, parentId) => {
+            moveFolderToSecondLevel(folderId, parentId).catch((caught) => {
+              setError(caught instanceof Error ? caught.message : "移动目录失败");
+              refreshTree();
+            });
+          }}
+          onFolderReorder={(folderId, target) => {
+            reorderFolder(folderId, target).catch((caught) => {
+              setError(caught instanceof Error ? caught.message : "排序目录失败");
               refreshTree();
             });
           }}

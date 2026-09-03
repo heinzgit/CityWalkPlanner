@@ -285,7 +285,9 @@ Page({
             name: node.name,
             level: node.level,
             routeCount: node.routeCount,
-            isExpanded
+            isExpanded,
+            isLocalFolder: node.id === localFolderId,
+            directoryLabel: node.id === localFolderId ? "本地" : node.level === 0 ? "一级目录" : "二级目录"
           });
 
           if (isExpanded) {

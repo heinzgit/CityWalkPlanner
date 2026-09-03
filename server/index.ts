@@ -250,6 +250,44 @@ async function ensureFolderBelongsToUser(userId: string, folderId: string | null
   }
 }
 
+function validationError(message: string) {
+  const error = new Error(message) as Error & { statusCode?: number };
+  error.statusCode = 400;
+  return error;
+}
+
+/** Routes are organized as: first-level directory → second-level directory → route. */
+async function ensureTwoLevelFolderParent(userId: string, parentId: string | null | undefined) {
+  if (!parentId) return;
+
+  const parent = await prisma.folder.findFirst({
+    where: { id: parentId, userId },
+    select: { parentId: true }
+  });
+
+  if (!parent) throw validationError("Folder not found");
+  if (parent.parentId) {
+    throw validationError("Only two folder levels are supported");
+  }
+}
+
+async function collectAncestorFolderIds(userId: string, folderId: string | null | undefined) {
+  const ancestorIds: string[] = [];
+  let currentId = folderId ?? null;
+
+  while (currentId) {
+    const folder = await prisma.folder.findFirst({
+      where: { id: currentId, userId },
+      select: { id: true, parentId: true }
+    });
+    if (!folder) break;
+    ancestorIds.push(folder.id);
+    currentId = folder.parentId;
+  }
+
+  return ancestorIds;
+}
+
 async function ensureRouteBelongsToUser(userId: string, routeId: string) {
   const route = await prisma.routePlan.findFirst({
     where: { id: routeId, userId }
@@ -385,6 +423,7 @@ app.post("/api/folders", authenticate, async (req, res, next) => {
       .parse(req.body);
 
     await ensureFolderBelongsToUser(userId, input.parentId ?? null);
+    await ensureTwoLevelFolderParent(userId, input.parentId ?? null);
 
     const folder = await prisma.folder.create({
       data: {
@@ -396,6 +435,43 @@ app.post("/api/folders", authenticate, async (req, res, next) => {
     });
 
     res.status(201).json(folder);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/folders/reorder", authenticate, async (req, res, next) => {
+  try {
+    const userId = userIdOf(req);
+    const input = z
+      .object({
+        parentId: optionalIdSchema,
+        folderIds: z.array(idSchema).min(1)
+      })
+      .parse(req.body);
+    const parentId = input.parentId ?? null;
+
+    if (new Set(input.folderIds).size !== input.folderIds.length) {
+      throw validationError("Folder IDs must be unique");
+    }
+    await ensureFolderBelongsToUser(userId, parentId);
+
+    const folders = await prisma.folder.findMany({
+      where: { userId, id: { in: input.folderIds } },
+      select: { id: true, parentId: true }
+    });
+    if (folders.length !== input.folderIds.length || folders.some((folder) => folder.parentId !== parentId)) {
+      throw validationError("Folders must belong to the same directory");
+    }
+
+    await prisma.$transaction(
+      input.folderIds.map((id, sortOrder) => prisma.folder.update({ where: { id }, data: { sortOrder } }))
+    );
+    const orderedFolders = await prisma.folder.findMany({
+      where: { userId, id: { in: input.folderIds } },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }]
+    });
+    res.json(orderedFolders);
   } catch (error) {
     next(error);
   }
@@ -415,6 +491,18 @@ app.patch("/api/folders/:id", authenticate, async (req, res, next) => {
 
     await ensureFolderBelongsToUser(userId, id);
     await ensureFolderBelongsToUser(userId, input.parentId ?? null);
+
+    if (input.parentId !== undefined) {
+      if (input.parentId === id) throw validationError("A folder cannot be its own parent");
+      const parentAncestors = await collectAncestorFolderIds(userId, input.parentId);
+      if (parentAncestors.includes(id)) throw validationError("A folder cannot be moved into its own descendant");
+      await ensureTwoLevelFolderParent(userId, input.parentId);
+
+      const descendantIds = await collectDescendantFolderIds(userId, id);
+      if (descendantIds.length > 0 && input.parentId) {
+        throw validationError("A folder with subdirectories cannot be moved to the second level");
+      }
+    }
 
     const folder = await prisma.folder.update({
       where: { id },

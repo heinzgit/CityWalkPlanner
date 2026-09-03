@@ -223,7 +223,7 @@ button {
   color: #2c3642;
 }
 
-.tree-row .icon-button:not(.visibility):not(.disclosure):not(.danger),
+.tree-row .icon-button:not(.visibility):not(.disclosure):not(.danger):not(.folder-action),
 .tree-row .tree-spacer {
   opacity: 0;
 }
@@ -233,6 +233,15 @@ button {
 .tree-row:hover .tree-spacer,
 .tree-row.selected .tree-spacer {
   opacity: 1;
+}
+
+.tree-row .folder-action {
+  opacity: 1;
+}
+
+.directory-hint {
+  color: #8290a1 !important;
+  font-size: 11px !important;
 }
 
 .tree-row:hover,

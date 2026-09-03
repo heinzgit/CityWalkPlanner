@@ -43,6 +43,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload)
     }),
+  reorderFolders: (payload: { parentId: string | null; folderIds: string[] }) =>
+    request<Folder[]>("/api/folders/reorder", {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
   deleteFolder: (id: string) => request<void>(`/api/folders/${id}`, { method: "DELETE" }),
   setFolderVisibility: (id: string, isVisible: boolean) =>
     request<{ folderIds: string[]; isVisible: boolean }>(`/api/folders/${id}/visibility`, {
