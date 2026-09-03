@@ -1,4 +1,4 @@
-import type { RoutePlan } from "./types";
+import type { Folder, RoutePlan } from "./types";
 
 function escapeXml(value: string) {
   return value
@@ -98,7 +98,7 @@ function bd09ToWgs84(lng: number, lat: number) {
   return gcj02ToWgs84(gcj02.lng, gcj02.lat);
 }
 
-function buildKml(route: RoutePlan) {
+function buildRoutePlacemark(route: RoutePlan, styleId: string) {
   const coordinates = route.points
     .map((point) => {
       const converted = bd09ToWgs84(point.lng, point.lat);
@@ -107,7 +107,21 @@ function buildKml(route: RoutePlan) {
     .join(" ");
   const safeName = escapeXml(route.name);
   const safeDescription = route.description ? escapeXml(route.description) : "";
-  const styleId = `route-${route.id}`;
+  return `    <Placemark>
+      <name>${safeName}</name>
+      ${safeDescription ? `<description>${safeDescription}</description>` : ""}
+      <styleUrl>#${styleId}</styleUrl>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>${coordinates}</coordinates>
+      </LineString>
+    </Placemark>`;
+}
+
+function buildKml(route: RoutePlan) {
+  const safeName = escapeXml(route.name);
+  const safeDescription = route.description ? escapeXml(route.description) : "";
+  const styleId = "route-0";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
@@ -120,15 +134,68 @@ function buildKml(route: RoutePlan) {
         <width>2.0</width>
       </LineStyle>
     </Style>
-    <Placemark>
-      <name>${safeName}</name>
-      ${safeDescription ? `<description>${safeDescription}</description>` : ""}
-      <styleUrl>#${styleId}</styleUrl>
-      <LineString>
-        <tessellate>1</tessellate>
-        <coordinates>${coordinates}</coordinates>
-      </LineString>
-    </Placemark>
+${buildRoutePlacemark(route, styleId)}
+  </Document>
+</kml>
+`;
+}
+
+function buildFolderKml(rootFolder: Folder, folders: Folder[], routes: RoutePlan[]) {
+  const folderChildren = new Map<string, Folder[]>();
+  folders.forEach((folder) => {
+    if (!folder.parentId) return;
+    const children = folderChildren.get(folder.parentId) ?? [];
+    children.push(folder);
+    folderChildren.set(folder.parentId, children);
+  });
+
+  const routesByFolder = new Map<string, RoutePlan[]>();
+  routes.forEach((route) => {
+    if (!route.folderId) return;
+    const siblings = routesByFolder.get(route.folderId) ?? [];
+    siblings.push(route);
+    routesByFolder.set(route.folderId, siblings);
+  });
+
+  const sortByOrder = <T extends { sortOrder: number; name: string }>(items: T[]) =>
+    [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "zh-CN"));
+  const exportedRoutes: RoutePlan[] = [];
+  const collectRoutes = (folder: Folder) => {
+    sortByOrder(routesByFolder.get(folder.id) ?? []).forEach((route) => exportedRoutes.push(route));
+    sortByOrder(folderChildren.get(folder.id) ?? []).forEach(collectRoutes);
+  };
+  collectRoutes(rootFolder);
+
+  const styleIds = new Map(exportedRoutes.map((route, index) => [route.id, `route-${index}`]));
+  const renderFolder = (folder: Folder, indent: string): string => {
+    const folderRoutes = sortByOrder(routesByFolder.get(folder.id) ?? []);
+    const childFolders = sortByOrder(folderChildren.get(folder.id) ?? []);
+    const routeMarkup = folderRoutes
+      .map((route) => `${indent}  ${buildRoutePlacemark(route, styleIds.get(route.id)! ).trimStart()}`)
+      .join("\n");
+    const childMarkup = childFolders.map((child) => renderFolder(child, `${indent}  `)).join("\n");
+    const contents = [routeMarkup, childMarkup].filter(Boolean).join("\n");
+    return `${indent}<Folder>
+${indent}  <name>${escapeXml(folder.name)}</name>${contents ? `\n${contents}` : ""}
+${indent}</Folder>`;
+  };
+
+  const styles = exportedRoutes
+    .map(
+      (route) => `    <Style id="${styleIds.get(route.id)}">
+      <LineStyle>
+        <color>${toKmlColor(route.color)}</color>
+        <width>2.0</width>
+      </LineStyle>
+    </Style>`
+    )
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${escapeXml(rootFolder.name)}</name>
+${styles ? `${styles}\n` : ""}${renderFolder(rootFolder, "    ")}
   </Document>
 </kml>
 `;
@@ -235,5 +302,12 @@ export function createRouteKmz(route: RoutePlan) {
   const kml = buildKml(route);
   const zip = buildZip([{ name: "doc.kml", data: encodeUtf8(kml) }]);
   const fileName = `${sanitizeFileName(route.name)}.kmz`;
+  return { blob: zip, fileName };
+}
+
+export function createFolderKmz(rootFolder: Folder, folders: Folder[], routes: RoutePlan[]) {
+  const kml = buildFolderKml(rootFolder, folders, routes);
+  const zip = buildZip([{ name: "doc.kml", data: encodeUtf8(kml) }]);
+  const fileName = `${sanitizeFileName(rootFolder.name)}.kmz`;
   return { blob: zip, fileName };
 }

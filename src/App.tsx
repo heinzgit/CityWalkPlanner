@@ -7,6 +7,7 @@ import {
   Edit3,
   Eye,
   EyeOff,
+  Download,
   Folder,
   FolderPlus,
   LogOut,
@@ -22,7 +23,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import { loadBaiduMap } from "./baiduMap";
-import { createRouteKmz } from "./kmz";
+import { createFolderKmz, createRouteKmz } from "./kmz";
 import { buildTree, findRoute, getNextVisibility } from "./tree";
 import type { RoutePlan, RoutePoint, TreeNode, User, VisibilityState } from "./types";
 
@@ -212,6 +213,7 @@ function TreeView({
   onToggleVisibility,
   onCreateFolder,
   onCreateRoute,
+  onExportFolderKmz,
   onDeleteFolder,
   onDeleteRoute,
   expandedFolderIds,
@@ -235,6 +237,7 @@ function TreeView({
   onToggleVisibility: (node: TreeNode) => void;
   onCreateFolder: (parentId: string | null) => void;
   onCreateRoute: (folderId: string | null) => void;
+  onExportFolderKmz: (folderId: string) => void;
   onDeleteFolder: (folderId: string) => void;
   onDeleteRoute: (routeId: string) => void;
   expandedFolderIds: Set<string>;
@@ -375,6 +378,9 @@ function TreeView({
             </button>
             {node.type === "folder" ? (
               <>
+                <button className="icon-button folder-export" type="button" title="导出文件夹 KMZ" onClick={() => onExportFolderKmz(node.id)}>
+                  <Download size={15} />
+                </button>
                 {isTopLevelFolder ? (
                   <button className="icon-button folder-action" type="button" title="新建二级目录" onClick={() => onCreateFolder(node.id)}>
                     <FolderPlus size={15} />
@@ -407,6 +413,7 @@ function TreeView({
               onToggleVisibility={onToggleVisibility}
               onCreateFolder={onCreateFolder}
               onCreateRoute={onCreateRoute}
+              onExportFolderKmz={onExportFolderKmz}
               onDeleteFolder={onDeleteFolder}
               onDeleteRoute={onDeleteRoute}
               expandedFolderIds={expandedFolderIds}
@@ -956,6 +963,18 @@ export function App() {
     window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
   };
 
+  const exportFolderKmz = (folderId: string) => {
+    const folder = folders.find((item) => item.id === folderId);
+    if (!folder) return;
+    const { blob, fileName } = createFolderKmz(folder, folders, routes);
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+  };
+
   const submitAuth = async (payload: { username: string; password: string; displayName?: string }) => {
     setIsAuthSubmitting(true);
     setAuthError(null);
@@ -1052,6 +1071,7 @@ export function App() {
           onToggleVisibility={toggleVisibility}
           onCreateFolder={createFolder}
           onCreateRoute={createRoute}
+          onExportFolderKmz={exportFolderKmz}
           onDeleteFolder={deleteFolder}
           onDeleteRoute={deleteRoute}
           expandedFolderIds={expandedFolderIds}

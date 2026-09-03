@@ -215,7 +215,7 @@ button {
 
 .tree-row {
   display: grid;
-  grid-template-columns: 24px 28px minmax(0, 1fr) repeat(3, 28px);
+  grid-template-columns: 24px 28px minmax(0, 1fr) repeat(4, 28px);
   align-items: center;
   gap: 4px;
   min-height: 34px;
@@ -223,7 +223,7 @@ button {
   color: #2c3642;
 }
 
-.tree-row .icon-button:not(.visibility):not(.disclosure):not(.danger):not(.folder-action),
+.tree-row .icon-button:not(.visibility):not(.disclosure):not(.danger):not(.folder-action):not(.folder-export),
 .tree-row .tree-spacer {
   opacity: 0;
 }
@@ -235,7 +235,8 @@ button {
   opacity: 1;
 }
 
-.tree-row .folder-action {
+.tree-row .folder-action,
+.tree-row .folder-export {
   opacity: 1;
 }
 
