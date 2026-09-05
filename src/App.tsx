@@ -74,6 +74,7 @@ type RouteDropTarget =
   | { type: "folder-order"; parentId: string; folderId: string; position: "before" | "after" };
 
 type AuthMode = "login" | "register";
+type TreeContextMenu = { node: TreeNode; x: number; y: number };
 
 function visibilityIcon(state: VisibilityState) {
   if (state === "visible") return <Eye size={16} />;
@@ -232,6 +233,7 @@ function TreeView({
   onRouteDrop,
   onFolderDrop,
   onFolderReorder,
+  onOpenContextMenu,
   level = 0
 }: {
   nodes: TreeNode[];
@@ -257,6 +259,7 @@ function TreeView({
   onRouteDrop: (routeId: string, target: RouteDropTarget) => void;
   onFolderDrop: (folderId: string, targetFolderId: string) => void;
   onFolderReorder: (folderId: string, target: Extract<RouteDropTarget, { type: "folder-order" }>) => void;
+  onOpenContextMenu: (node: TreeNode, x: number, y: number) => void;
   level?: number;
 }) {
   const isTopLevelFolder = level === 0;
@@ -349,6 +352,10 @@ function TreeView({
               const routeId = event.dataTransfer.getData("text/plain") || draggedRouteId;
               if (routeId) onRouteDrop(routeId, dropTarget);
             }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onOpenContextMenu(node, event.clientX, event.clientY);
+            }}
           >
             {node.type === "folder" ? (
               <button
@@ -380,38 +387,6 @@ function TreeView({
               {node.type === "folder" ? <Folder size={16} /> : <Route size={16} />}
               <span>{node.name}</span>
             </button>
-            {node.type === "folder" ? (
-              <>
-                <button className="icon-button folder-export" type="button" title="导出文件夹 KMZ" onClick={() => onExportFolderKmz(node.id)}>
-                  <Download size={15} />
-                </button>
-                <button className="icon-button folder-rename" type="button" title="重命名文件夹" onClick={() => onRenameFolder(node.id, node.name)}>
-                  <Edit3 size={15} />
-                </button>
-                {isTopLevelFolder ? (
-                  <button className="icon-button folder-action" type="button" title="新建二级目录" onClick={() => onCreateFolder(node.id)}>
-                    <FolderPlus size={15} />
-                  </button>
-                ) : (
-                  <span className="tree-spacer" />
-                )}
-                <button className="icon-button folder-create-route" type="button" title="新建路线" onClick={() => onCreateRoute(node.id)}>
-                  <Plus size={15} />
-                </button>
-                <button className="icon-button danger" type="button" title="删除文件夹" onClick={() => onDeleteFolder(node.id)}>
-                  <Trash2 size={15} />
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="tree-spacer" />
-                <span className="tree-spacer" />
-                <span className="tree-spacer" />
-                <button className="icon-button danger" type="button" title="删除路线" onClick={() => onDeleteRoute(node.id)}>
-                  <Trash2 size={15} />
-                </button>
-              </>
-            )}
           </div>
           {node.type === "folder" && expandedFolderIds.has(node.id) && node.children.length > 0 ? (
             <TreeView
@@ -438,6 +413,7 @@ function TreeView({
               onRouteDrop={onRouteDrop}
               onFolderDrop={onFolderDrop}
               onFolderReorder={onFolderReorder}
+              onOpenContextMenu={onOpenContextMenu}
               level={level + 1}
             />
           ) : null}
@@ -473,6 +449,7 @@ export function App() {
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [draggedFolderParentId, setDraggedFolderParentId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<RouteDropTarget | null>(null);
+  const [treeContextMenu, setTreeContextMenu] = useState<TreeContextMenu | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -515,6 +492,13 @@ export function App() {
   useEffect(() => {
     setColorDraft(selectedRoute?.color ?? "");
   }, [selectedRoute?.id, selectedRoute?.color]);
+
+  useEffect(() => {
+    if (!treeContextMenu) return;
+    const closeMenu = () => setTreeContextMenu(null);
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
+  }, [treeContextMenu]);
 
   useEffect(() => {
     if (!selectedRoute || selectedPointIndex === null) return;
@@ -974,15 +958,18 @@ export function App() {
     setRouteMode("edit");
   };
 
-  const exportSelectedRouteKmz = async () => {
-    if (!selectedRoute) return;
-    const { blob, fileName } = createRouteKmz(selectedRoute);
+  const exportRouteKmz = (route: RoutePlan) => {
+    const { blob, fileName } = createRouteKmz(route);
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = fileName;
     anchor.click();
     window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+  };
+
+  const exportSelectedRouteKmz = () => {
+    if (selectedRoute) exportRouteKmz(selectedRoute);
   };
 
   const exportFolderKmz = (folderId: string) => {
@@ -1108,7 +1095,6 @@ export function App() {
             <p>
               {currentUser.displayName || currentUser.username} · {dataStatus}
             </p>
-            <p className="directory-hint">拖动一级目录可归入二级；同级二级目录可上下拖动排序</p>
           </div>
           <div className="header-actions">
             <input ref={kmzInputRef} className="file-input" type="file" accept=".kmz,application/vnd.google-earth.kmz" onChange={importKmz} />
@@ -1180,7 +1166,46 @@ export function App() {
               refreshTree();
             });
           }}
+          onOpenContextMenu={(node, x, y) => setTreeContextMenu({ node, x, y })}
         />
+        {treeContextMenu ? (
+          <div
+            className="tree-context-menu"
+            style={{ left: treeContextMenu.x, top: treeContextMenu.y }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {treeContextMenu.node.type === "folder" ? (
+              <>
+                <button type="button" onClick={() => { setTreeContextMenu(null); exportFolderKmz(treeContextMenu.node.id); }}>
+                  <Download size={15} /> 导出 KMZ
+                </button>
+                <button type="button" onClick={() => { setTreeContextMenu(null); renameFolder(treeContextMenu.node.id, treeContextMenu.node.name); }}>
+                  <Edit3 size={15} /> 重命名文件夹
+                </button>
+                {treeContextMenu.node.parentId === null ? (
+                  <button type="button" onClick={() => { setTreeContextMenu(null); createFolder(treeContextMenu.node.id); }}>
+                    <FolderPlus size={15} /> 新建二级目录
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => { setTreeContextMenu(null); createRoute(treeContextMenu.node.id); }}>
+                  <Plus size={15} /> 新建路线
+                </button>
+                <button className="danger" type="button" onClick={() => { setTreeContextMenu(null); deleteFolder(treeContextMenu.node.id); }}>
+                  <Trash2 size={15} /> 删除文件夹
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => { setTreeContextMenu(null); exportRouteKmz(treeContextMenu.node as RoutePlan); }}>
+                  <Download size={15} /> 导出 KMZ
+                </button>
+                <button className="danger" type="button" onClick={() => { setTreeContextMenu(null); deleteRoute(treeContextMenu.node.id); }}>
+                  <Trash2 size={15} /> 删除路线
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
       </aside>
       {!isSidebarCollapsed ? <div className="sidebar-resizer" role="separator" onPointerDown={startSidebarResize} /> : null}
 

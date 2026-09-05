@@ -219,7 +219,7 @@ button {
 
 .tree-row {
   display: grid;
-  grid-template-columns: 24px 28px minmax(0, 1fr) repeat(5, 28px);
+  grid-template-columns: 24px 28px minmax(0, 1fr);
   align-items: center;
   gap: 4px;
   min-height: 34px;
@@ -227,23 +227,40 @@ button {
   color: #2c3642;
 }
 
-.tree-row .icon-button:not(.visibility):not(.disclosure):not(.danger):not(.folder-action):not(.folder-export):not(.folder-rename):not(.folder-create-route),
-.tree-row .tree-spacer {
-  opacity: 0;
+.tree-context-menu {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  min-width: 168px;
+  padding: 5px;
+  border: 1px solid #d4deea;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(30, 53, 77, 0.18);
 }
 
-.tree-row:hover .icon-button,
-.tree-row.selected .icon-button,
-.tree-row:hover .tree-spacer,
-.tree-row.selected .tree-spacer {
-  opacity: 1;
+.tree-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #2c3642;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
 }
 
-.tree-row .folder-action,
-.tree-row .folder-export,
-.tree-row .folder-rename,
-.tree-row .folder-create-route {
-  opacity: 1;
+.tree-context-menu button:hover {
+  background: #eef5ff;
+}
+
+.tree-context-menu button.danger {
+  color: #c02d2d;
 }
 
 .directory-hint {
