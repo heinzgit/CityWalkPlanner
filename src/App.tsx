@@ -460,7 +460,9 @@ export function App() {
   const mapRef = useRef<BMapGL.Map | null>(null);
   const overlaysRef = useRef<Map<string, OverlayBundle>>(new Map());
   const clickHandlerRef = useRef<((event: BMapGL.MapMouseEvent) => void) | null>(null);
+  const rightClickHandlerRef = useRef<((event: BMapGL.MapMouseEvent) => void) | null>(null);
   const skipNextMapClickRef = useRef(false);
+  const skipNextMapRightClickRef = useRef(false);
   const routesRef = useRef<RoutePlan[]>([]);
   const kmzInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -519,6 +521,20 @@ export function App() {
       )
     );
   }, []);
+
+  const deleteSelectedPoint = useCallback(() => {
+    if (!selectedRouteId || selectedPointIndex === null) return;
+
+    const deletingIndex = selectedPointIndex;
+    setSelectedPointIndex(deletingIndex > 0 ? deletingIndex - 1 : null);
+    setRoutes((currentRoutes) =>
+      currentRoutes.map((route) =>
+        route.id === selectedRouteId
+          ? { ...route, points: route.points.filter((_point, pointIndex) => pointIndex !== deletingIndex) }
+          : route
+      )
+    );
+  }, [selectedPointIndex, selectedRouteId]);
 
   const refreshTree = useCallback(async () => {
     const payload = await api.getTree();
@@ -775,22 +791,12 @@ export function App() {
               setSelectedPointIndex(index);
             });
             marker.addEventListener("rightclick", () => {
-              skipNextMapClickRef.current = true;
+              // Marker right-clicks can also reach the map listener below.
+              skipNextMapRightClickRef.current = true;
               window.setTimeout(() => {
-                skipNextMapClickRef.current = false;
+                skipNextMapRightClickRef.current = false;
               }, 0);
-              setSelectedPointIndex((current) => {
-                if (current === null) return null;
-                if (current === index) return null;
-                return current > index ? current - 1 : current;
-              });
-              setRoutes((currentRoutes) =>
-                currentRoutes.map((currentRoute) =>
-                  currentRoute.id === route.id
-                    ? { ...currentRoute, points: currentRoute.points.filter((_routePoint, pointIndex) => pointIndex !== index) }
-                    : currentRoute
-                )
-              );
+              deleteSelectedPoint();
             });
           }
           if (isCurrentPoint) {
@@ -807,7 +813,7 @@ export function App() {
         markers.forEach((marker) => map.addOverlay(marker));
         overlaysRef.current.set(route.id, { polyline, markers });
       });
-  }, [routes, selectedRouteId, routeMode, selectedPointIndex, isMapReady, updateRoutePoint, showRouteDirectionArrows]);
+  }, [routes, selectedRouteId, routeMode, selectedPointIndex, isMapReady, updateRoutePoint, deleteSelectedPoint, showRouteDirectionArrows]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -816,6 +822,10 @@ export function App() {
     if (clickHandlerRef.current) {
       map.removeEventListener("click", clickHandlerRef.current);
       clickHandlerRef.current = null;
+    }
+    if (rightClickHandlerRef.current) {
+      map.removeEventListener("rightclick", rightClickHandlerRef.current);
+      rightClickHandlerRef.current = null;
     }
     if (routeMode !== "edit") return;
 
@@ -848,7 +858,17 @@ export function App() {
 
     clickHandlerRef.current = handler;
     map.addEventListener("click", handler);
-  }, [selectedRouteId, routeMode, selectedPointIndex, isMapReady]);
+
+    const rightClickHandler = () => {
+      if (skipNextMapRightClickRef.current) {
+        skipNextMapRightClickRef.current = false;
+        return;
+      }
+      deleteSelectedPoint();
+    };
+    rightClickHandlerRef.current = rightClickHandler;
+    map.addEventListener("rightclick", rightClickHandler);
+  }, [selectedRouteId, routeMode, selectedPointIndex, isMapReady, deleteSelectedPoint]);
 
   const focusSelectedRoute = useCallback(() => {
     const map = mapRef.current;
