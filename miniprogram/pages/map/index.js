@@ -72,6 +72,13 @@ Page({
         currentUser: null,
         isAuthChecking: false
       });
+      // 离线启动时认证必然失败。这里必须重新从 storage 恢复，不能只
+      // 依赖 onLoad 中较早的一次 setData 还保留着缓存路线。
+      if (this.restoreCachedServerRoutes({ preserveSelectedId: true })) {
+        wx.showToast({ title: "已显示缓存路线", icon: "none" });
+        return;
+      }
+
       this.loadLocalWalks({ preserveSelectedId: true });
     }
   },
@@ -84,9 +91,7 @@ Page({
       this.applyServerRoutes(payload, { preserveSelectedId: true });
     } catch (error) {
       console.error("[map] load routes failed", error);
-      const cache = readServerRouteCache();
-      if (hasCachedServerRoutes(cache)) {
-        this.applyServerRoutes(cache, { preserveSelectedId: true });
+      if (this.restoreCachedServerRoutes({ preserveSelectedId: true })) {
         wx.showToast({ title: "已显示缓存路线", icon: "none" });
         return;
       }
@@ -96,10 +101,15 @@ Page({
   },
 
   loadCachedServerRoutes() {
-    const cache = readServerRouteCache();
-    if (!hasCachedServerRoutes(cache)) return;
+    return this.restoreCachedServerRoutes({ preserveSelectedId: true });
+  },
 
-    this.applyServerRoutes(cache, { preserveSelectedId: true });
+  restoreCachedServerRoutes(options = {}) {
+    const cache = readServerRouteCache();
+    if (!hasCachedServerRoutes(cache)) return false;
+
+    this.applyServerRoutes(cache, options);
+    return true;
   },
 
   applyServerRoutes(payload, options = {}) {
