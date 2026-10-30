@@ -629,6 +629,28 @@ button {
   font-size: 12px;
 }
 
+.optimize-points-button {
+  margin-left: auto;
+  padding: 6px 8px;
+  border: 1px solid #b9d2f5;
+  border-radius: 6px;
+  background: #f5f9ff;
+  color: #1769c2;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.optimize-points-button:hover:not(:disabled) {
+  border-color: #1769c2;
+  background: #eaf2ff;
+}
+
+.optimize-points-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .icon-button:disabled {
   cursor: default;
   opacity: 0.45;

@@ -25,6 +25,7 @@ import {
 import { api } from "./api";
 import { loadBaiduMap } from "./baiduMap";
 import { createFolderKmz, createRouteKmz, parseKmzFile } from "./kmz";
+import { simplifyRoutePoints } from "./routeSimplify";
 import type { ImportedKmzFolder } from "./kmz";
 import { buildTree, findRoute, getNextVisibility } from "./tree";
 import type { RoutePlan, RoutePoint, TreeNode, User, VisibilityState } from "./types";
@@ -969,6 +970,28 @@ export function App() {
     }
   };
 
+  const optimizeSelectedRoutePoints = async () => {
+    if (!selectedRoute) return;
+
+    const optimizedPoints = simplifyRoutePoints(selectedRoute.points);
+    if (optimizedPoints.length === selectedRoute.points.length) {
+      setDataStatus("当前路线无需优化");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const updated = await api.saveRoutePoints(selectedRoute.id, optimizedPoints);
+      setRoutes((currentRoutes) => currentRoutes.map((route) => (route.id === updated.id ? updated : route)));
+      setSelectedPointIndex(null);
+      setDataStatus(`已优化节点：${selectedRoute.points.length} → ${updated.points.length}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "优化节点失败");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const copySelectedRoute = async () => {
     if (!selectedRoute) return;
     const copy = await api.copyRoute(selectedRoute.id);
@@ -1373,6 +1396,15 @@ export function App() {
                 <strong>路线节点</strong>
                 <small>{formatDistance(selectedRoute.points)}</small>
               </div>
+              <button
+                className="optimize-points-button"
+                type="button"
+                onClick={optimizeSelectedRoutePoints}
+                disabled={isSaving || selectedRoute.points.length < 3}
+                title="使用 10 米容差保留关键转弯点"
+              >
+                优化节点数
+              </button>
             </div>
             {routeMode === "edit" ? (
               <button className="save-button" type="button" onClick={saveSelectedRoute} disabled={isSaving}>
