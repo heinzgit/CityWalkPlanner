@@ -1,13 +1,13 @@
 # CityWalk Planner
 
-一个使用百度地图渲染 citywalk 路线的全栈 MVP。路线像文件一样存放在多层文件夹中，文件夹和路线都支持显示/隐藏；系统加载后会把所有显示状态的路线绘制到地图上。
+一个使用高德地图渲染 citywalk 路线的全栈 MVP。路线像文件一样存放在多层文件夹中，文件夹和路线都支持显示/隐藏；系统加载后会把所有显示状态的路线绘制到地图上。
 
 ## 技术栈
 
 - Vite + React + TypeScript
 - Express + Prisma
 - MySQL，默认连接本地 `localhost:3306/citywalk_codex`
-- 百度地图 JavaScript API GL
+- 高德地图 JavaScript API 2.0
 
 ## 本地启动
 
@@ -27,7 +27,7 @@
 
    ```env
    DATABASE_URL="mysql://USER:PASSWORD@localhost:3306/citywalk_codex"
-   VITE_BAIDU_MAP_AK="your-baidu-map-ak"
+
    PORT=43101
    SESSION_COOKIE_SECURE=false
    CORS_ORIGIN_CHECK_ENABLED=false
@@ -89,7 +89,8 @@ cp deploy.env.example deploy.env
 
 ```bash
 docker build \
-  --build-arg VITE_BAIDU_MAP_AK="your-baidu-map-ak" \
+  --build-arg VITE_AMAP_KEY="your-amap-key" \
+  --build-arg VITE_AMAP_SECURITY_JS_CODE="your-amap-security-js-code" \
   -t citywalk-planner:latest .
 ```
 
@@ -105,3 +106,7 @@ docker run -d \
 ```
 
 生产服务默认监听容器内 `43101` 端口，并由 Express 同时提供 `/api/*` 和前端静态页面。
+
+## 坐标兼容
+
+服务端路线点继续使用 BD-09，避免影响现有数据、小程序和 iOS 客户端。Web 端绘制到高德地图前会转换为 GCJ-02；地图点击、拖拽点位和保存地图中心时会转换回 BD-09。

@@ -1,4 +1,5 @@
 import type { Folder, RoutePlan } from "./types";
+import { bd09ToWgs84, wgs84ToBd09 } from "./coord";
 
 export type ImportedKmzRoute = {
   name: string;
@@ -39,110 +40,10 @@ function toKmlColor(color: string) {
   return `ff${bb}${gg}${rr}`;
 }
 
-function bd09ToGcj02(lng: number, lat: number) {
-  const x = lng - 0.0065;
-  const y = lat - 0.006;
-  const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * Math.PI);
-  const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * Math.PI);
-  return {
-    lng: z * Math.cos(theta),
-    lat: z * Math.sin(theta)
-  };
-}
-
-function outOfChina(lng: number, lat: number) {
-  return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
-}
-
-function transformLat(lng: number, lat: number) {
-  let ret =
-    -100.0 +
-    2.0 * lng +
-    3.0 * lat +
-    0.2 * lat * lat +
-    0.1 * lng * lat +
-    0.2 * Math.sqrt(Math.abs(lng));
-  ret +=
-    ((20.0 * Math.sin(6.0 * lng * Math.PI) + 20.0 * Math.sin(2.0 * lng * Math.PI)) * 2.0) / 3.0;
-  ret += ((20.0 * Math.sin(lat * Math.PI) + 40.0 * Math.sin((lat / 3.0) * Math.PI)) * 2.0) / 3.0;
-  ret += ((160.0 * Math.sin((lat / 12.0) * Math.PI) + 320 * Math.sin((lat * Math.PI) / 30.0)) * 2.0) / 3.0;
-  return ret;
-}
-
-function transformLng(lng: number, lat: number) {
-  let ret =
-    300.0 +
-    lng +
-    2.0 * lat +
-    0.1 * lng * lng +
-    0.1 * lng * lat +
-    0.1 * Math.sqrt(Math.abs(lng));
-  ret +=
-    ((20.0 * Math.sin(6.0 * lng * Math.PI) + 20.0 * Math.sin(2.0 * lng * Math.PI)) * 2.0) / 3.0;
-  ret += ((20.0 * Math.sin(lng * Math.PI) + 40.0 * Math.sin((lng / 3.0) * Math.PI)) * 2.0) / 3.0;
-  ret += ((150.0 * Math.sin((lng / 12.0) * Math.PI) + 300.0 * Math.sin((lng / 30.0) * Math.PI)) * 2.0) / 3.0;
-  return ret;
-}
-
-function gcj02ToWgs84(lng: number, lat: number) {
-  if (outOfChina(lng, lat)) {
-    return { lng, lat };
-  }
-
-  const a = 6378245.0;
-  const ee = 0.00669342162296594323;
-  const dLat = transformLat(lng - 105.0, lat - 35.0);
-  const dLng = transformLng(lng - 105.0, lat - 35.0);
-  const radLat = (lat / 180.0) * Math.PI;
-  let magic = Math.sin(radLat);
-  magic = 1 - ee * magic * magic;
-  const sqrtMagic = Math.sqrt(magic);
-  const mgLat = lat + ((dLat * 180.0) / (((a * (1 - ee)) / (magic * sqrtMagic)) * Math.PI));
-  const mgLng = lng + ((dLng * 180.0) / ((a / sqrtMagic) * Math.cos(radLat) * Math.PI));
-
-  return {
-    lng: lng * 2 - mgLng,
-    lat: lat * 2 - mgLat
-  };
-}
-
-function bd09ToWgs84(lng: number, lat: number) {
-  const gcj02 = bd09ToGcj02(lng, lat);
-  return gcj02ToWgs84(gcj02.lng, gcj02.lat);
-}
-
-function wgs84ToGcj02(lng: number, lat: number) {
-  if (outOfChina(lng, lat)) return { lng, lat };
-
-  const a = 6378245.0;
-  const ee = 0.00669342162296594323;
-  const dLat = transformLat(lng - 105.0, lat - 35.0);
-  const dLng = transformLng(lng - 105.0, lat - 35.0);
-  const radLat = (lat / 180.0) * Math.PI;
-  let magic = Math.sin(radLat);
-  magic = 1 - ee * magic * magic;
-  const sqrtMagic = Math.sqrt(magic);
-  return {
-    lng: lng + ((dLng * 180.0) / ((a / sqrtMagic) * Math.cos(radLat) * Math.PI)),
-    lat: lat + ((dLat * 180.0) / (((a * (1 - ee)) / (magic * sqrtMagic)) * Math.PI))
-  };
-}
-
-function gcj02ToBd09(lng: number, lat: number) {
-  const z = Math.sqrt(lng * lng + lat * lat) + 0.00002 * Math.sin(lat * Math.PI);
-  const theta = Math.atan2(lat, lng) + 0.000003 * Math.cos(lng * Math.PI);
-  return { lng: z * Math.cos(theta) + 0.0065, lat: z * Math.sin(theta) + 0.006 };
-}
-
-function wgs84ToBd09(lng: number, lat: number) {
-  const gcj02 = wgs84ToGcj02(lng, lat);
-  return gcj02ToBd09(gcj02.lng, gcj02.lat);
-}
-
 function buildRoutePlacemark(route: RoutePlan, styleId: string) {
   const coordinates = route.points
     .map((point) => {
-      const converted = bd09ToWgs84(point.lng, point.lat);
+      const converted = bd09ToWgs84(point);
       return `${converted.lng},${converted.lat},0`;
     })
     .join(" ");
@@ -377,7 +278,7 @@ function parseCoordinates(value: string) {
     .map((coordinate) => coordinate.split(","))
     .map(([rawLng, rawLat]) => ({ lng: Number(rawLng), lat: Number(rawLat) }))
     .filter((point) => Number.isFinite(point.lng) && Number.isFinite(point.lat) && point.lng >= -180 && point.lng <= 180 && point.lat >= -90 && point.lat <= 90)
-    .map((point) => wgs84ToBd09(point.lng, point.lat));
+    .map((point) => wgs84ToBd09(point));
 }
 
 function parseKml(kml: string, fallbackName: string): ImportedKmzFolder[] {

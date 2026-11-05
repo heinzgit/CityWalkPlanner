@@ -23,7 +23,8 @@ import {
   Trash2
 } from "lucide-react";
 import { api } from "./api";
-import { loadBaiduMap } from "./baiduMap";
+import { loadAmap } from "./amap";
+import { bd09ToGcj02, gcj02ToBd09 } from "./coord";
 import { createFolderKmz, createRouteKmz, parseKmzFile } from "./kmz";
 import { simplifyRoutePoints } from "./routeSimplify";
 import type { ImportedKmzFolder } from "./kmz";
@@ -65,8 +66,8 @@ type RouteMode = "view" | "edit";
 type MapTypeMode = "normal" | "satellite";
 
 type OverlayBundle = {
-  polyline: BMapGL.Polyline;
-  markers: BMapGL.Marker[];
+  polyline: AMap.Polyline;
+  markers: AMap.Marker[];
 };
 
 type RouteDropTarget =
@@ -189,25 +190,8 @@ function formatDistance(points: RoutePoint[]) {
   return `${(meters / 1000).toFixed(2)} km`;
 }
 
-function isLngLat(point: Pick<RoutePoint, "lng" | "lat">) {
-  return point.lng >= -180 && point.lng <= 180 && point.lat >= -90 && point.lat <= 90;
-}
-
 function getInputColor(color: string) {
   return colorPattern.test(color) ? color : "#1677ff";
-}
-
-function createDirectionTexture(color: string) {
-  const arrowColor = getInputColor(color);
-  return (
-    "data:image/svg+xml;charset=UTF-8," +
-    encodeURIComponent(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="64" viewBox="0 0 16 64">
-        <path d="M8 2v46" fill="none" stroke="${arrowColor}" stroke-width="5" stroke-linecap="round"/>
-        <path d="M2 47l6 14 6-14z" fill="${arrowColor}"/>
-      </svg>`
-    )
-  );
 }
 
 function TreeView({
@@ -445,6 +429,9 @@ export function App() {
     const stored = window.localStorage.getItem("citywalk-map-type");
     return stored === "satellite" ? "satellite" : "normal";
   });
+  const [showSatelliteRoadNet, setShowSatelliteRoadNet] = useState(() => {
+    return window.localStorage.getItem("citywalk-satellite-roadnet") !== "false";
+  });
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
   const [draggedRouteId, setDraggedRouteId] = useState<string | null>(null);
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
@@ -458,10 +445,11 @@ export function App() {
   const [showRouteDirectionArrows, setShowRouteDirectionArrows] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<BMapGL.Map | null>(null);
+  const mapRef = useRef<AMap.Map | null>(null);
+  const mapLayersRef = useRef<{ normal: AMap.Layer; satellite: AMap.Layer; roadNet: AMap.Layer } | null>(null);
   const overlaysRef = useRef<Map<string, OverlayBundle>>(new Map());
-  const clickHandlerRef = useRef<((event: BMapGL.MapMouseEvent) => void) | null>(null);
-  const rightClickHandlerRef = useRef<((event: BMapGL.MapMouseEvent) => void) | null>(null);
+  const clickHandlerRef = useRef<AMap.EventHandler | null>(null);
+  const rightClickHandlerRef = useRef<AMap.EventHandler | null>(null);
   const skipNextMapClickRef = useRef(false);
   const skipNextMapRightClickRef = useRef(false);
   const routesRef = useRef<RoutePlan[]>([]);
@@ -480,7 +468,9 @@ export function App() {
     setDataStatus("请先登录");
     setIsMapReady(false);
     setMapStatus("正在加载地图");
+    mapRef.current?.destroy();
     mapRef.current = null;
+    mapLayersRef.current = null;
     overlaysRef.current.clear();
   }, []);
 
@@ -491,6 +481,10 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem("citywalk-map-type", mapTypeMode);
   }, [mapTypeMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem("citywalk-satellite-roadnet", String(showSatelliteRoadNet));
+  }, [showSatelliteRoadNet]);
 
   useEffect(() => {
     setColorDraft(selectedRoute?.color ?? "");
@@ -678,23 +672,35 @@ export function App() {
     if (!currentUser || authStatus !== "ready") return;
     if (mapRef.current) return;
 
-    const ak = import.meta.env.VITE_BAIDU_MAP_AK as string | undefined;
+    const key = import.meta.env.VITE_AMAP_KEY as string | undefined;
+    const securityJsCode = import.meta.env.VITE_AMAP_SECURITY_JS_CODE as string | undefined;
 
-    if (!ak || ak === "your-baidu-map-ak") {
-      setMapStatus("请在 .env 中配置 VITE_BAIDU_MAP_AK");
+    if (!key || key === "your-amap-key" || !securityJsCode || securityJsCode === "your-amap-security-js-code") {
+      setMapStatus("请在 .env 中配置高德地图 Key 和安全密钥");
       return;
     }
 
     let disposed = false;
 
-    loadBaiduMap(ak)
-      .then((BMap) => {
+    loadAmap(key, securityJsCode)
+      .then((AMapApi) => {
         if (disposed || !mapContainerRef.current) return;
-        const map = new BMap.Map(mapContainerRef.current);
-        map.centerAndZoom(new BMap.Point(defaultCenter.lng, defaultCenter.lat), 13);
-        map.enableScrollWheelZoom(true);
-        map.setMapType(mapTypeMode === "satellite" ? BMap.BMAP_SATELLITE_MAP : BMap.BMAP_NORMAL_MAP);
+        const normalLayer = AMapApi.createDefaultLayer();
+        const satelliteLayer = new AMapApi.TileLayer.Satellite();
+        const roadNetLayer = new AMapApi.TileLayer.RoadNet();
+        if (!showSatelliteRoadNet) roadNetLayer.hide();
+        const map = new AMapApi.Map(mapContainerRef.current, {
+          center: [defaultCenter.lng, defaultCenter.lat],
+          zoom: 13,
+          viewMode: "2D",
+          resizeEnable: true,
+          layers:
+            mapTypeMode === "satellite"
+              ? [satelliteLayer, roadNetLayer]
+              : [normalLayer]
+        });
         mapRef.current = map;
+        mapLayersRef.current = { normal: normalLayer, satellite: satelliteLayer, roadNet: roadNetLayer };
         setMapStatus("地图已加载");
         setIsMapReady(true);
       })
@@ -707,25 +713,33 @@ export function App() {
     return () => {
       disposed = true;
     };
-  }, [authStatus, currentUser, mapTypeMode]);
+  }, [authStatus, currentUser, mapTypeMode, showSatelliteRoadNet]);
 
   useEffect(() => {
     const map = mapRef.current;
-    const BMap = window.BMapGL;
-    if (!isMapReady || !map || !BMap) return;
-    map.setMapType(mapTypeMode === "satellite" ? BMap.BMAP_SATELLITE_MAP : BMap.BMAP_NORMAL_MAP);
-  }, [isMapReady, mapTypeMode]);
+    const layers = mapLayersRef.current;
+    if (!isMapReady || !map || !layers) return;
+    if (mapTypeMode === "satellite") {
+      map.setLayers([layers.satellite, layers.roadNet]);
+      if (showSatelliteRoadNet) {
+        layers.roadNet.show();
+      } else {
+        layers.roadNet.hide();
+      }
+    } else {
+      map.setLayers([layers.normal]);
+    }
+  }, [isMapReady, mapTypeMode, showSatelliteRoadNet]);
 
   useEffect(() => {
     const map = mapRef.current;
-    const BMap = window.BMapGL;
-    if (!isMapReady || !map || !BMap) return;
+    const AMapApi = window.AMap;
+    if (!isMapReady || !map || !AMapApi) return;
 
     overlaysRef.current.forEach((bundle, routeId) => {
       const route = routes.find((item) => item.id === routeId);
       if (!route || !route.isVisible) {
-        map.removeOverlay(bundle.polyline);
-        bundle.markers.forEach((marker) => map.removeOverlay(marker));
+        map.remove([bundle.polyline, ...bundle.markers]);
         overlaysRef.current.delete(routeId);
       }
     });
@@ -735,27 +749,25 @@ export function App() {
       .forEach((route) => {
         const existing = overlaysRef.current.get(route.id);
         if (existing) {
-          map.removeOverlay(existing.polyline);
-          existing.markers.forEach((marker) => map.removeOverlay(marker));
+          map.remove([existing.polyline, ...existing.markers]);
         }
 
-        const points = route.points.map((point) => new BMap.Point(point.lng, point.lat));
+        const points = route.points.map((point) => {
+          const converted = bd09ToGcj02(point);
+          return new AMapApi.LngLat(converted.lng, converted.lat);
+        });
         const shouldShowDirectionArrows = showRouteDirectionArrows && route.id === selectedRouteId && points.length > 1;
-        const polyline = new BMap.Polyline(points, {
+        const polyline = new AMapApi.Polyline({
+          path: points,
           strokeColor: route.id === selectedRouteId ? route.color : route.color,
           strokeWeight: route.id === selectedRouteId ? 7 : 5,
           strokeOpacity: route.id === selectedRouteId ? 0.95 : 0.72,
-          ...(shouldShowDirectionArrows
-            ? {
-                strokeTexture: {
-                  url: createDirectionTexture(route.color),
-                  width: 16,
-                  height: 64
-                }
-              }
-            : {})
+          lineJoin: "round",
+          showDir: shouldShowDirectionArrows,
+          dirColor: route.color,
+          zIndex: route.id === selectedRouteId ? 20 : 10
         });
-        polyline.addEventListener("click", () => {
+        polyline.on("click", () => {
           if (skipNextMapClickRef.current) return;
           if (routeMode === "edit" && route.id !== selectedRouteId) return;
           skipNextMapClickRef.current = true;
@@ -769,29 +781,37 @@ export function App() {
           }
         });
         const canEditMarkers = route.id === selectedRouteId && routeMode === "edit";
-        const pointIcon = new BMap.Icon(editPointIcon, new BMap.Size(14, 14), {
-          anchor: new BMap.Size(7, 7),
-          imageSize: new BMap.Size(14, 14)
+        const pointIcon = new AMapApi.Icon({
+          image: editPointIcon,
+          size: new AMapApi.Size(14, 14),
+          imageSize: new AMapApi.Size(14, 14)
         });
-        const yellowIcon = new BMap.Icon(currentPointIcon, new BMap.Size(18, 18), {
-          anchor: new BMap.Size(9, 9),
-          imageSize: new BMap.Size(18, 18)
+        const yellowIcon = new AMapApi.Icon({
+          image: currentPointIcon,
+          size: new AMapApi.Size(18, 18),
+          imageSize: new AMapApi.Size(18, 18)
         });
         const markers = canEditMarkers ? points.map((point, index) => {
           const isCurrentPoint = canEditMarkers && index === selectedPointIndex;
-          const marker = new BMap.Marker(point, { enableDragging: isCurrentPoint, icon: isCurrentPoint ? yellowIcon : pointIcon });
+          const marker = new AMapApi.Marker({
+            position: point,
+            draggable: isCurrentPoint,
+            icon: isCurrentPoint ? yellowIcon : pointIcon,
+            anchor: "center",
+            zIndex: isCurrentPoint ? 40 : 30
+          });
           if (isCurrentPoint) {
             marker.setIcon(yellowIcon);
           }
           if (canEditMarkers) {
-            marker.addEventListener("click", () => {
+            marker.on("click", () => {
               skipNextMapClickRef.current = true;
               window.setTimeout(() => {
                 skipNextMapClickRef.current = false;
               }, 0);
               setSelectedPointIndex(index);
             });
-            marker.addEventListener("rightclick", () => {
+            marker.on("rightclick", () => {
               // Marker right-clicks can also reach the map listener below.
               skipNextMapRightClickRef.current = true;
               window.setTimeout(() => {
@@ -801,50 +821,44 @@ export function App() {
             });
           }
           if (isCurrentPoint) {
-            marker.enableDragging();
-            marker.addEventListener("dragend", (event) => {
-              const nextPoint = marker.getPosition() ?? event.target?.getPosition() ?? event.point;
-              if (!nextPoint || !isLngLat(nextPoint)) return;
-              updateRoutePoint(route.id, index, { lng: nextPoint.lng, lat: nextPoint.lat });
+            marker.on("dragend", () => {
+              const nextPoint = marker.getPosition();
+              if (!nextPoint) return;
+              updateRoutePoint(route.id, index, gcj02ToBd09({ lng: nextPoint.getLng(), lat: nextPoint.getLat() }));
             });
           }
           return marker;
         }) : [];
-        map.addOverlay(polyline);
-        markers.forEach((marker) => map.addOverlay(marker));
+        map.add([polyline, ...markers]);
         overlaysRef.current.set(route.id, { polyline, markers });
       });
   }, [routes, selectedRouteId, routeMode, selectedPointIndex, isMapReady, updateRoutePoint, deleteSelectedPoint, showRouteDirectionArrows]);
 
   useEffect(() => {
     const map = mapRef.current;
-    const BMap = window.BMapGL;
-    if (!isMapReady || !map || !BMap) return;
+    if (!isMapReady || !map) return;
     if (clickHandlerRef.current) {
-      map.removeEventListener("click", clickHandlerRef.current);
+      map.off("click", clickHandlerRef.current);
       clickHandlerRef.current = null;
     }
     if (rightClickHandlerRef.current) {
-      map.removeEventListener("rightclick", rightClickHandlerRef.current);
+      map.off("rightclick", rightClickHandlerRef.current);
       rightClickHandlerRef.current = null;
     }
     if (routeMode !== "edit") return;
 
-    const handler = (event: BMapGL.MapMouseEvent) => {
+    const handler: AMap.EventHandler = (event) => {
       if (skipNextMapClickRef.current) {
         skipNextMapClickRef.current = false;
         return;
       }
-      const point = event.latlng ?? event.point;
+      const point = event.lnglat;
       if (!point || !selectedRouteId) return;
       setRoutes((currentRoutes) =>
         currentRoutes.map((route) =>
           route.id === selectedRouteId
             ? (() => {
-                const nextPoint = {
-                  lng: point.lng,
-                  lat: point.lat
-                };
+                const nextPoint = gcj02ToBd09({ lng: point.getLng(), lat: point.getLat() });
                 const insertIndex =
                   selectedPointIndex === null ? route.points.length : Math.min(selectedPointIndex + 1, route.points.length);
                 const nextPoints = [...route.points];
@@ -858,9 +872,9 @@ export function App() {
     };
 
     clickHandlerRef.current = handler;
-    map.addEventListener("click", handler);
+    map.on("click", handler);
 
-    const rightClickHandler = () => {
+    const rightClickHandler: AMap.EventHandler = () => {
       if (skipNextMapRightClickRef.current) {
         skipNextMapRightClickRef.current = false;
         return;
@@ -868,14 +882,24 @@ export function App() {
       deleteSelectedPoint();
     };
     rightClickHandlerRef.current = rightClickHandler;
-    map.addEventListener("rightclick", rightClickHandler);
+    map.on("rightclick", rightClickHandler);
   }, [selectedRouteId, routeMode, selectedPointIndex, isMapReady, deleteSelectedPoint]);
 
   const focusSelectedRoute = useCallback(() => {
     const map = mapRef.current;
-    const BMap = window.BMapGL;
-    if (!map || !BMap || !selectedRoute?.points.length) return;
-    map.setViewport(selectedRoute.points.map((point) => new BMap.Point(point.lng, point.lat)));
+    const AMapApi = window.AMap;
+    if (!map || !AMapApi || !selectedRoute?.points.length) return;
+    const points = selectedRoute.points.map((point) => {
+      const converted = bd09ToGcj02(point);
+      return new AMapApi.LngLat(converted.lng, converted.lat);
+    });
+    if (points.length === 1) {
+      map.setZoomAndCenter(18, points[0]);
+      return;
+    }
+    const bounds = new AMapApi.Bounds(points[0], points[0]);
+    points.slice(1).forEach((point) => bounds.extend(point));
+    map.setBounds(bounds, false, [80, 80, 80, 80], 18);
   }, [selectedRoute]);
 
   const createFolder = async (parentId: string | null) => {
@@ -949,13 +973,14 @@ export function App() {
       const map = mapRef.current;
       const center = map?.getCenter();
       const zoom = map?.getZoom();
+      const storedCenter = center ? gcj02ToBd09({ lng: center.getLng(), lat: center.getLat() }) : null;
 
       const updated = await api.updateRoute(routeToSave.id, {
         name: routeToSave.name,
         description: routeToSave.description,
         color: routeToSave.color,
-        mapLng: center?.lng ?? routeToSave.mapLng,
-        mapLat: center?.lat ?? routeToSave.mapLat,
+        mapLng: storedCenter?.lng ?? routeToSave.mapLng,
+        mapLat: storedCenter?.lat ?? routeToSave.mapLat,
         mapZoom: zoom ?? routeToSave.mapZoom
       });
       const withPoints = await api.saveRoutePoints(updated.id, routeToSave.points);
@@ -1289,6 +1314,18 @@ export function App() {
             <Satellite size={16} />
             {mapTypeMode === "satellite" ? "卫星图" : "普通图"}
           </button>
+          {mapTypeMode === "satellite" ? (
+            <button
+              type="button"
+              className={showSatelliteRoadNet ? "active" : ""}
+              aria-pressed={showSatelliteRoadNet}
+              onClick={() => setShowSatelliteRoadNet((current) => !current)}
+              title={showSatelliteRoadNet ? "关闭卫星图路网" : "显示卫星图路网"}
+            >
+              <Route size={16} />
+              {showSatelliteRoadNet ? "路网开" : "路网关"}
+            </button>
+          ) : null}
           <span className={`mode-pill ${routeMode}`}>{routeMode === "edit" ? "编辑中" : "显示模式"}</span>
         </div>
         {error ? <div className="error-banner">{error}</div> : null}

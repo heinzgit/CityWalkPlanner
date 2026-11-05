@@ -18,8 +18,10 @@ COPY tsconfig*.json vite.config.ts index.html ./
 COPY src ./src
 COPY server ./server
 
-ARG VITE_BAIDU_MAP_AK
-ENV VITE_BAIDU_MAP_AK=${VITE_BAIDU_MAP_AK}
+ARG VITE_AMAP_KEY
+ARG VITE_AMAP_SECURITY_JS_CODE
+ENV VITE_AMAP_KEY=${VITE_AMAP_KEY}
+ENV VITE_AMAP_SECURITY_JS_CODE=${VITE_AMAP_SECURITY_JS_CODE}
 
 RUN npm run build
 RUN npm run build:server
