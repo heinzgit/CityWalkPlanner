@@ -194,6 +194,15 @@ function getInputColor(color: string) {
   return colorPattern.test(color) ? color : "#1677ff";
 }
 
+function getDirectionArrowColor(color: string) {
+  const normalized = getInputColor(color).slice(1);
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+  return luminance > 160 ? "#111827" : "#ffffff";
+}
+
 function TreeView({
   nodes,
   selectedRouteId,
@@ -760,11 +769,11 @@ export function App() {
         const polyline = new AMapApi.Polyline({
           path: points,
           strokeColor: route.id === selectedRouteId ? route.color : route.color,
-          strokeWeight: route.id === selectedRouteId ? 7 : 5,
+          strokeWeight: route.id === selectedRouteId ? (shouldShowDirectionArrows ? 9 : 7) : 5,
           strokeOpacity: route.id === selectedRouteId ? 0.95 : 0.72,
           lineJoin: "round",
           showDir: shouldShowDirectionArrows,
-          dirColor: route.color,
+          dirColor: getDirectionArrowColor(route.color),
           zIndex: route.id === selectedRouteId ? 20 : 10
         });
         polyline.on("click", () => {
