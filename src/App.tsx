@@ -64,6 +64,24 @@ const editPointIcon =
   );
 type RouteMode = "view" | "edit";
 type MapTypeMode = "normal" | "satellite";
+type MapLayers = { normal: AMap.Layer; satellite: AMap.Layer; roadNet: AMap.Layer };
+
+function updateMapLayerVisibility(layers: MapLayers, mode: MapTypeMode, showRoadNet: boolean) {
+  if (mode === "satellite") {
+    layers.normal.hide();
+    layers.satellite.show();
+    if (showRoadNet) {
+      layers.roadNet.show();
+    } else {
+      layers.roadNet.hide();
+    }
+    return;
+  }
+
+  layers.normal.show();
+  layers.satellite.hide();
+  layers.roadNet.hide();
+}
 
 type OverlayBundle = {
   polyline: AMap.Polyline;
@@ -455,7 +473,7 @@ export function App() {
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<AMap.Map | null>(null);
-  const mapLayersRef = useRef<{ normal: AMap.Layer; satellite: AMap.Layer; roadNet: AMap.Layer } | null>(null);
+  const mapLayersRef = useRef<MapLayers | null>(null);
   const overlaysRef = useRef<Map<string, OverlayBundle>>(new Map());
   const clickHandlerRef = useRef<AMap.EventHandler | null>(null);
   const rightClickHandlerRef = useRef<AMap.EventHandler | null>(null);
@@ -697,19 +715,18 @@ export function App() {
         const normalLayer = AMapApi.createDefaultLayer();
         const satelliteLayer = new AMapApi.TileLayer.Satellite();
         const roadNetLayer = new AMapApi.TileLayer.RoadNet();
-        if (!showSatelliteRoadNet) roadNetLayer.hide();
         const map = new AMapApi.Map(mapContainerRef.current, {
           center: [defaultCenter.lng, defaultCenter.lat],
           zoom: 13,
           viewMode: "2D",
           resizeEnable: true,
-          layers:
-            mapTypeMode === "satellite"
-              ? [satelliteLayer, roadNetLayer]
-              : [normalLayer]
+          showLabel: true,
+          layers: [normalLayer, satelliteLayer, roadNetLayer]
         });
         mapRef.current = map;
-        mapLayersRef.current = { normal: normalLayer, satellite: satelliteLayer, roadNet: roadNetLayer };
+        const layers = { normal: normalLayer, satellite: satelliteLayer, roadNet: roadNetLayer };
+        mapLayersRef.current = layers;
+        updateMapLayerVisibility(layers, mapTypeMode, showSatelliteRoadNet);
         setMapStatus("地图已加载");
         setIsMapReady(true);
       })
@@ -728,16 +745,7 @@ export function App() {
     const map = mapRef.current;
     const layers = mapLayersRef.current;
     if (!isMapReady || !map || !layers) return;
-    if (mapTypeMode === "satellite") {
-      map.setLayers([layers.satellite, layers.roadNet]);
-      if (showSatelliteRoadNet) {
-        layers.roadNet.show();
-      } else {
-        layers.roadNet.hide();
-      }
-    } else {
-      map.setLayers([layers.normal]);
-    }
+    updateMapLayerVisibility(layers, mapTypeMode, showSatelliteRoadNet);
   }, [isMapReady, mapTypeMode, showSatelliteRoadNet]);
 
   useEffect(() => {

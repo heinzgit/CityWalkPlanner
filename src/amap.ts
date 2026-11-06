@@ -15,7 +15,6 @@ declare global {
       remove(overlays: Overlay | Overlay[]): void;
       on(event: string, handler: EventHandler): void;
       off(event: string, handler: EventHandler): void;
-      setLayers(layers: Layer[]): void;
       setZoomAndCenter(zoom: number, center: LngLatLike): void;
       setBounds(bounds: Bounds, immediately?: boolean, avoid?: number[], maxZoom?: number): void;
       getCenter(): LngLat;
@@ -67,6 +66,7 @@ declare global {
       zoom?: number;
       viewMode?: "2D" | "3D";
       resizeEnable?: boolean;
+      showLabel?: boolean;
       layers?: Layer[];
     };
 
