@@ -18,6 +18,34 @@
   gap: 16rpx;
 }
 
+.location-button {
+  width: 72rpx;
+  height: 72rpx;
+  flex: 0 0 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1rpx solid #d7e0eb;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1b3558;
+}
+
+.location-button::after {
+  border: 0;
+}
+
+.location-button-active {
+  background: #edf4fc;
+}
+
+.location-icon {
+  font-size: 42rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .tool-button {
   flex: 1;
   min-height: 72rpx;

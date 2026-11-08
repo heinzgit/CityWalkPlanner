@@ -46,6 +46,14 @@
    npm run prisma:generate
    ```
 
+   已有数据库如需启用路线完成日期、距离和出行方式，请先手动执行：
+
+   ```bash
+   mysql YOUR_DATABASE < prisma/add-route-completion-fields.sql
+   ```
+
+   应用不会自动执行这份 SQL。
+
 4. 可选：写入示例路线
 
    ```bash

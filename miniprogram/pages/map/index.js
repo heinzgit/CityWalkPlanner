@@ -6,7 +6,7 @@ const {
   writeServerRouteCache
 } = require("../../services/serverRouteCache");
 const { bd09ToGcj02, gcj02ToBd09, toMapPoint } = require("../../utils/coord");
-const { shouldAppendTrackPoint } = require("../../utils/track");
+const { shouldAppendTrackPoint, simplifyTrackPoints } = require("../../utils/track");
 
 const shanghai = {
   longitude: 121.4737,
@@ -15,6 +15,9 @@ const shanghai = {
 
 const localRouteColor = "#0f766e";
 const localFolderId = "__local_walks__";
+const trackRenderIntervalMs = 1000;
+const previewPointLimit = 600;
+const previewTargetPointCount = 400;
 
 Page({
   data: {
@@ -37,7 +40,6 @@ Page({
     walkDescription: "",
     walkStartedAt: "",
     walkEndedAt: "",
-    trackPoints: [],
     localWalks: [],
     syncingWalkIds: [],
     polylines: [],
@@ -47,12 +49,32 @@ Page({
   },
 
   onLoad() {
+    this.trackPoints = [];
+    this.previewTrackPoints = [];
+    this.routePolylines = [];
+    this.trackRenderTimer = null;
+    this.lastTrackRenderAt = 0;
+    this.isPageVisible = true;
     this.loadLocalWalks();
     this.loadCachedServerRoutes();
     this.checkAuth();
   },
 
+  onShow() {
+    this.isPageVisible = true;
+    this.clearTrackRenderTimer();
+    this.lastTrackRenderAt = Date.now();
+    this.renderTrackPreview(true);
+  },
+
+  onHide() {
+    this.isPageVisible = false;
+    this.clearTrackRenderTimer();
+  },
+
   onUnload() {
+    this.isPageVisible = false;
+    this.clearTrackRenderTimer();
     wx.offLocationChange(this.handleLocationChange);
     wx.stopLocationUpdate();
   },
@@ -83,15 +105,15 @@ Page({
     }
   },
 
-  async loadRoutes() {
+  async loadRoutes(options = {}) {
     if (!this.data.currentUser) return;
     try {
       const payload = await api.getTree();
       writeServerRouteCache(payload);
-      this.applyServerRoutes(payload, { preserveSelectedId: true });
+      this.applyServerRoutes(payload, { ...options, preserveSelectedId: true });
     } catch (error) {
       console.error("[map] load routes failed", error);
-      if (this.restoreCachedServerRoutes({ preserveSelectedId: true })) {
+      if (this.restoreCachedServerRoutes({ ...options, preserveSelectedId: true })) {
         wx.showToast({ title: "已显示缓存路线", icon: "none" });
         return;
       }
@@ -117,7 +139,9 @@ Page({
     const folders = payload.folders || [];
     const displayRoutes = this.buildDisplayRoutes(routes, this.data.localWalks);
     const routeTreeNodes = this.buildRouteTree(folders, displayRoutes);
-    const expandedFolderIds = this.mergeExpandedFolderIds(routeTreeNodes);
+    const expandedFolderIds = options.expandRootFoldersOnly
+      ? this.collectRootFolderIds(routeTreeNodes)
+      : this.mergeExpandedFolderIds(routeTreeNodes);
     const selectedRouteId = options.preserveSelectedId
       ? this.data.selectedRouteId || this.resolveSelectedRouteId(displayRoutes)
       : this.resolveSelectedRouteId(displayRoutes);
@@ -277,9 +301,15 @@ Page({
   mergeExpandedFolderIds(routeTreeNodes) {
     const currentIds = this.data.expandedFolderIds || [];
     const nextIds = this.collectFolderIds(routeTreeNodes);
-    if (currentIds.length === 0) return nextIds;
+    if (currentIds.length === 0) return this.collectRootFolderIds(routeTreeNodes);
 
     return currentIds.filter((id) => nextIds.includes(id));
+  },
+
+  collectRootFolderIds(routeTreeNodes) {
+    return routeTreeNodes
+      .filter((node) => node.type === "folder" && node.level === 0)
+      .map((node) => node.id);
   },
 
   flattenRouteTree(nodes, expandedFolderIds) {
@@ -363,7 +393,7 @@ Page({
   },
 
   renderPolylines() {
-    const routeLines = this.data.displayRoutes
+    this.routePolylines = this.data.displayRoutes
       .filter((route) => route.points.length > 0)
       .map((route) => ({
         points: this.routeMapPoints(route),
@@ -373,10 +403,15 @@ Page({
         arrowLine: false
       }));
 
+    this.renderTrackPreview(true);
+  },
+
+  renderTrackPreview(forceFullUpdate = false) {
+    if (!this.isPageVisible) return;
     const trackLine =
-      this.data.trackPoints.length > 1
+      this.previewTrackPoints.length > 1
         ? {
-            points: this.data.trackPoints.map(toMapPoint),
+            points: this.previewTrackPoints.map(toMapPoint),
             color: "#f59e0b",
             width: 8,
             dottedLine: false,
@@ -384,9 +419,36 @@ Page({
           }
         : null;
 
-    this.setData({
-      polylines: trackLine ? [...routeLines, trackLine] : routeLines
-    });
+    const trackLineIndex = this.routePolylines.length;
+    const canUpdateTrackOnly =
+      !forceFullUpdate && trackLine && this.data.polylines.length === trackLineIndex + 1;
+
+    if (canUpdateTrackOnly) {
+      this.setData({ [`polylines[${trackLineIndex}].points`]: trackLine.points });
+      return;
+    }
+
+    this.setData({ polylines: trackLine ? [...this.routePolylines, trackLine] : this.routePolylines });
+  },
+
+  scheduleTrackPreview(immediate = false) {
+    if (!this.isPageVisible || this.trackRenderTimer) return;
+
+    const elapsed = Date.now() - this.lastTrackRenderAt;
+    const delay = immediate ? 0 : Math.max(0, trackRenderIntervalMs - elapsed);
+
+    this.trackRenderTimer = setTimeout(() => {
+      this.trackRenderTimer = null;
+      if (!this.isPageVisible) return;
+      this.lastTrackRenderAt = Date.now();
+      this.renderTrackPreview();
+    }, delay);
+  },
+
+  clearTrackRenderTimer() {
+    if (!this.trackRenderTimer) return;
+    clearTimeout(this.trackRenderTimer);
+    this.trackRenderTimer = null;
   },
 
   fitSelectedRoute() {
@@ -462,6 +524,7 @@ Page({
       wx.startLocationUpdate({
         type: "gcj02",
         success: () => {
+          this.resetTrackBuffers();
           wx.onLocationChange(this.handleLocationChange);
           this.setData(
             {
@@ -469,10 +532,11 @@ Page({
               locationMode: "foreground",
               shouldShowLocation: true,
               walkStartedAt: startedAt,
-              walkEndedAt: "",
-              trackPoints: []
+              walkEndedAt: ""
             },
-            () => this.renderPolylines()
+            () => {
+              this.renderPolylines();
+            }
           );
           wx.showToast({ title: "前台记录中", icon: "none" });
         },
@@ -494,6 +558,7 @@ Page({
     startLocationUpdateBackground({
       type: "gcj02",
       success: () => {
+        this.resetTrackBuffers();
         wx.onLocationChange(this.handleLocationChange);
         this.setData(
           {
@@ -501,10 +566,11 @@ Page({
             locationMode: "background",
             shouldShowLocation: true,
             walkStartedAt: startedAt,
-            walkEndedAt: "",
-            trackPoints: []
+            walkEndedAt: ""
           },
-          () => this.renderPolylines()
+          () => {
+            this.renderPolylines();
+          }
         );
         wx.showToast({ title: "后台记录中", icon: "none" });
       },
@@ -521,9 +587,10 @@ Page({
 
     wx.offLocationChange(this.handleLocationChange);
     wx.stopLocationUpdate();
-    this.setData({ isRecording: false, locationMode: "", walkEndedAt: endedAt }, () => this.renderPolylines());
+    this.clearTrackRenderTimer();
+    this.setData({ isRecording: false, locationMode: "", walkEndedAt: endedAt }, () => this.renderTrackPreview());
 
-    if (this.data.trackPoints.length < 2) {
+    if (this.trackPoints.length < 2) {
       wx.showToast({ title: "轨迹点太少", icon: "none" });
       return;
     }
@@ -542,10 +609,12 @@ Page({
         walkName: "",
         walkDescription: "",
         walkStartedAt: "",
-        walkEndedAt: "",
-        trackPoints: []
+        walkEndedAt: ""
       },
-      () => this.renderPolylines()
+      () => {
+        this.resetTrackBuffers();
+        this.renderPolylines();
+      }
     );
   },
 
@@ -566,7 +635,7 @@ Page({
       return;
     }
 
-    if (this.data.trackPoints.length < 2 || this.data.isSavingWalk) return;
+    if (this.trackPoints.length < 2 || this.data.isSavingWalk) return;
 
     this.setData({ isSavingWalk: true });
 
@@ -574,7 +643,7 @@ Page({
       const savedWalk = saveLocalWalk({
         name,
         description: description || null,
-        points: this.data.trackPoints
+        points: this.trackPoints
       });
 
       wx.showToast({ title: "已保存到本地", icon: "success" });
@@ -586,10 +655,10 @@ Page({
           walkDescription: "",
           walkStartedAt: "",
           walkEndedAt: "",
-          trackPoints: [],
           selectedRouteId: savedWalk.id
         },
         () => {
+          this.resetTrackBuffers();
           this.loadLocalWalks({
             after: () => {
               this.renderPolylines();
@@ -658,7 +727,7 @@ Page({
           },
           () => {
             this.loadLocalWalks({ preserveSelectedId: true });
-            this.loadRoutes();
+            this.loadRoutes({ expandRootFoldersOnly: true });
           }
         );
         return route;
@@ -689,17 +758,25 @@ Page({
       capturedAt: new Date().toISOString()
     };
 
-    if (!shouldAppendTrackPoint(this.data.trackPoints, nextPoint)) return;
+    if (!shouldAppendTrackPoint(this.trackPoints, nextPoint)) return;
 
-    this.setData(
-      {
-        center: {
-          longitude: nextPoint.lng,
-          latitude: nextPoint.lat
-        },
-        trackPoints: [...this.data.trackPoints, nextPoint]
-      },
-      () => this.renderPolylines()
-    );
+    this.trackPoints.push(nextPoint);
+    this.previewTrackPoints.push(nextPoint);
+
+    if (this.previewTrackPoints.length > previewPointLimit) {
+      this.previewTrackPoints = simplifyTrackPoints(this.previewTrackPoints, {
+        toleranceMeters: 3,
+        maxPoints: previewTargetPointCount
+      });
+    }
+
+    this.scheduleTrackPreview();
+  },
+
+  resetTrackBuffers() {
+    this.clearTrackRenderTimer();
+    this.trackPoints = [];
+    this.previewTrackPoints = [];
+    this.lastTrackRenderAt = 0;
   }
 });

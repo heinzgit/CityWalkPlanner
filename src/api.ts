@@ -1,4 +1,4 @@
-import type { AuthPayload, Folder, RoutePlan, RoutePoint, TreePayload } from "./types";
+import type { AuthPayload, Folder, RoutePlan, RoutePoint, TravelMode, TravelStatsPayload, TreePayload } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -61,7 +61,22 @@ export const api = {
     }),
   updateRoute: (
     id: string,
-    payload: Partial<Pick<RoutePlan, "name" | "folderId" | "description" | "color" | "mapLng" | "mapLat" | "mapZoom" | "sortOrder">>
+    payload: Partial<
+      Pick<
+        RoutePlan,
+        | "name"
+        | "folderId"
+        | "description"
+        | "color"
+        | "mapLng"
+        | "mapLat"
+        | "mapZoom"
+        | "sortOrder"
+        | "completedOn"
+        | "distanceMeters"
+        | "travelMode"
+      >
+    >
   ) =>
     request<RoutePlan>(`/api/routes/${id}`, {
       method: "PATCH",
@@ -93,5 +108,13 @@ export const api = {
           lat: point.lat
         }))
       })
-    })
+    }),
+  getTravelStats: (filters: { from?: string; to?: string; travelMode?: TravelMode }) => {
+    const search = new URLSearchParams();
+    if (filters.from) search.set("from", filters.from);
+    if (filters.to) search.set("to", filters.to);
+    if (filters.travelMode) search.set("travelMode", filters.travelMode);
+    const query = search.toString();
+    return request<TravelStatsPayload>(`/api/stats/travel${query ? `?${query}` : ""}`);
+  }
 };

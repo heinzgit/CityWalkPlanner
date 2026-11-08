@@ -29,26 +29,31 @@ model Folder {
 }
 
 model RoutePlan {
-  id          String       @id @default(cuid()) @db.VarChar(191)
-  userId      String       @db.VarChar(191)
-  folderId    String?      @db.VarChar(191)
-  name        String       @db.VarChar(120)
-  description String?      @db.Text
-  color       String       @default("#1677ff") @db.VarChar(16)
-  isVisible   Boolean      @default(true)
-  pointsJson  Json?
-  mapLng      Float?
-  mapLat      Float?
-  mapZoom     Float?
-  sortOrder   Int          @default(0)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder      Folder?      @relation(fields: [folderId], references: [id], onDelete: Cascade)
-  points      RoutePoint[]
+  id             String       @id @default(cuid()) @db.VarChar(191)
+  userId         String       @db.VarChar(191)
+  folderId       String?      @db.VarChar(191)
+  name           String       @db.VarChar(120)
+  description    String?      @db.Text
+  color          String       @default("#1677ff") @db.VarChar(16)
+  isVisible      Boolean      @default(true)
+  pointsJson     Json?
+  mapLng         Float?
+  mapLat         Float?
+  mapZoom        Float?
+  sortOrder      Int          @default(0)
+  completedOn    DateTime?    @db.Date
+  distanceMeters Int?         @db.UnsignedInt
+  travelMode     String?      @db.VarChar(16)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder         Folder?      @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  points         RoutePoint[]
 
   @@index([userId])
   @@index([userId, folderId])
+  @@index([userId, completedOn])
+  @@index([userId, travelMode, completedOn])
   @@index([folderId])
   @@map("route_plans")
 }

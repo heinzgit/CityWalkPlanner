@@ -51,6 +51,15 @@ const usernameSchema = z
   .max(80)
   .regex(/^[a-zA-Z0-9_.-]+$/);
 const passwordSchema = z.string().min(8).max(128);
+const travelModeSchema = z.enum(["walking", "vehicle"]);
+const dateOnlyTextSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, "Invalid calendar date");
+const dateOnlySchema = dateOnlyTextSchema.transform((value) => new Date(`${value}T00:00:00.000Z`));
 const routePointSchema = z.object({
   lng: z.number().min(-180).max(180),
   lat: z.number().min(-90).max(90)
@@ -209,10 +218,15 @@ function normalizeRoutePoints(pointsJson: unknown): RoutePointPayload[] {
   return parsed.success ? parsed.data : [];
 }
 
-function serializeRoute<T extends { pointsJson: unknown }>(route: T) {
+function serializeDateOnly(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function serializeRoute<T extends { pointsJson: unknown; completedOn?: Date | null }>(route: T) {
   const { pointsJson, ...rest } = route;
   return {
     ...rest,
+    completedOn: route.completedOn ? serializeDateOnly(route.completedOn) : null,
     points: normalizeRoutePoints(pointsJson)
   };
 }
@@ -406,6 +420,82 @@ app.get("/api/tree", authenticate, async (req, res, next) => {
     ]);
 
     res.json({ folders, routes: routes.map(serializeRoute) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/stats/travel", authenticate, async (req, res, next) => {
+  try {
+    const userId = userIdOf(req);
+    const filters = z
+      .object({
+        from: dateOnlySchema.optional(),
+        to: dateOnlySchema.optional(),
+        travelMode: travelModeSchema.optional()
+      })
+      .parse(req.query);
+
+    if (filters.from && filters.to && filters.from > filters.to) {
+      throw validationError("Start date must not be after end date");
+    }
+
+    const routes = await prisma.routePlan.findMany({
+      where: {
+        userId,
+        completedOn: {
+          not: null,
+          ...(filters.from ? { gte: filters.from } : {}),
+          ...(filters.to ? { lte: filters.to } : {})
+        },
+        distanceMeters: { not: null },
+        travelMode: filters.travelMode ?? { in: travelModeSchema.options }
+      },
+      select: {
+        id: true,
+        name: true,
+        completedOn: true,
+        distanceMeters: true,
+        travelMode: true
+      },
+      orderBy: [{ completedOn: "desc" }, { name: "asc" }]
+    });
+
+    const items = routes.flatMap((route) => {
+      const mode = travelModeSchema.safeParse(route.travelMode);
+      if (!route.completedOn || route.distanceMeters === null || !mode.success) return [];
+      return [{
+        routeId: route.id,
+        name: route.name,
+        completedOn: serializeDateOnly(route.completedOn),
+        distanceMeters: route.distanceMeters,
+        travelMode: mode.data
+      }];
+    });
+    const monthlyMap = new Map<string, { month: string; tripCount: number; distanceMeters: number }>();
+    let walkingDistanceMeters = 0;
+    let vehicleDistanceMeters = 0;
+
+    items.forEach((item) => {
+      if (item.travelMode === "walking") walkingDistanceMeters += item.distanceMeters;
+      if (item.travelMode === "vehicle") vehicleDistanceMeters += item.distanceMeters;
+      const month = item.completedOn.slice(0, 7);
+      const bucket = monthlyMap.get(month) ?? { month, tripCount: 0, distanceMeters: 0 };
+      bucket.tripCount += 1;
+      bucket.distanceMeters += item.distanceMeters;
+      monthlyMap.set(month, bucket);
+    });
+
+    res.json({
+      summary: {
+        tripCount: items.length,
+        totalDistanceMeters: walkingDistanceMeters + vehicleDistanceMeters,
+        walkingDistanceMeters,
+        vehicleDistanceMeters
+      },
+      monthly: [...monthlyMap.values()].sort((left, right) => right.month.localeCompare(left.month)),
+      items
+    });
   } catch (error) {
     next(error);
   }
@@ -691,13 +781,30 @@ app.patch("/api/routes/:id", authenticate, async (req, res, next) => {
         mapLng: z.number().nullable().optional(),
         mapLat: z.number().nullable().optional(),
         mapZoom: z.number().nullable().optional(),
-        sortOrder: z.number().int().optional()
+        sortOrder: z.number().int().optional(),
+        completedOn: dateOnlySchema.nullable().optional(),
+        distanceMeters: z.number().int().min(1).max(4_294_967_295).nullable().optional(),
+        travelMode: travelModeSchema.nullable().optional()
       })
       .parse(req.body);
 
-    await ensureRouteBelongsToUser(userId, id);
+    const currentRoute = await ensureRouteBelongsToUser(userId, id);
     if (input.folderId !== undefined) {
       await ensureFolderBelongsToUser(userId, input.folderId);
+    }
+
+    const nextCompletedOn = input.completedOn === undefined ? currentRoute.completedOn : input.completedOn;
+    const nextDistanceMeters = input.distanceMeters === undefined ? currentRoute.distanceMeters : input.distanceMeters;
+    const nextTravelMode = input.travelMode === undefined ? currentRoute.travelMode : input.travelMode;
+    const completionFields = [nextCompletedOn, nextDistanceMeters, nextTravelMode];
+    const hasAnyCompletionField = completionFields.some((value) => value !== null);
+    const hasEveryCompletionField = completionFields.every((value) => value !== null);
+
+    if (hasAnyCompletionField && !hasEveryCompletionField) {
+      throw validationError("Completion date, distance, and travel mode must be saved together");
+    }
+    if (hasEveryCompletionField && normalizeRoutePoints(currentRoute.pointsJson).length < 2) {
+      throw validationError("A completed route must contain at least two points");
     }
 
     const route = await prisma.routePlan.update({
@@ -766,7 +873,10 @@ app.put("/api/routes/:id/points", authenticate, async (req, res, next) => {
       })
       .parse(req.body);
 
-    await ensureRouteBelongsToUser(userId, id);
+    const currentRoute = await ensureRouteBelongsToUser(userId, id);
+    if (currentRoute.completedOn && input.points.length < 2) {
+      throw validationError("A completed route must contain at least two points");
+    }
 
     const route = await prisma.routePlan.update({
       where: { id },

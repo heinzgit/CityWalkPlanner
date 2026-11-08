@@ -11,7 +11,14 @@
   />
 
   <view class="toolbar">
-    <button class="tool-button" bindtap="focusCurrentLocation">定位</button>
+    <button
+      class="location-button"
+      aria-label="定位到当前位置"
+      hover-class="location-button-active"
+      bindtap="focusCurrentLocation"
+    >
+      <text class="location-icon">⌖</text>
+    </button>
     <button class="tool-button primary" wx:if="{{!isRecording}}" bindtap="startRecording">开始记录</button>
     <button class="tool-button warning" wx:if="{{isRecording}}" bindtap="stopRecording">结束记录</button>
   </view>

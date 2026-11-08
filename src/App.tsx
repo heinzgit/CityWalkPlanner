@@ -3,6 +3,7 @@ import type { ChangeEvent, CSSProperties, PointerEvent as ReactPointerEvent } fr
 import {
   ChevronDown,
   ChevronRight,
+  BarChart3,
   Copy,
   Edit3,
   Eye,
@@ -14,11 +15,13 @@ import {
   PanelLeftClose,
   PanelRightClose,
   LocateFixed,
+  Map as MapIcon,
   Minus,
   Plus,
   Satellite,
   Upload,
   Route,
+  RotateCcw,
   Save,
   Trash2
 } from "lucide-react";
@@ -27,6 +30,7 @@ import { loadAmap } from "./amap";
 import { bd09ToGcj02, gcj02ToBd09 } from "./coord";
 import { createFolderKmz, createRouteKmz, parseKmzFile } from "./kmz";
 import { simplifyRoutePoints } from "./routeSimplify";
+import { TravelStats } from "./TravelStats";
 import type { ImportedKmzFolder } from "./kmz";
 import { buildTree, findRoute, getNextVisibility } from "./tree";
 import type { RoutePlan, RoutePoint, TreeNode, User, VisibilityState } from "./types";
@@ -206,6 +210,16 @@ function formatDistance(points: RoutePoint[]) {
   const meters = routeDistance(points);
   if (meters < 1000) return `${Math.round(meters)} m`;
   return `${(meters / 1000).toFixed(2)} km`;
+}
+
+function distanceInputValue(meters: number) {
+  return (meters / 1000).toFixed(3).replace(/\.?0+$/, "");
+}
+
+function currentLocalDate() {
+  const now = new Date();
+  const offsetDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return offsetDate.toISOString().slice(0, 10);
 }
 
 function getInputColor(color: string) {
@@ -470,8 +484,11 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [colorDraft, setColorDraft] = useState("");
   const [showRouteDirectionArrows, setShowRouteDirectionArrows] = useState(false);
+  const [activeView, setActiveView] = useState<"map" | "stats">("map");
+  const [distanceDraft, setDistanceDraft] = useState("");
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapToolbarRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<AMap.Map | null>(null);
   const mapLayersRef = useRef<MapLayers | null>(null);
   const overlaysRef = useRef<Map<string, OverlayBundle>>(new Map());
@@ -484,6 +501,15 @@ export function App() {
 
   const selectedRoute = useMemo(() => findRoute(routes, selectedRouteId), [routes, selectedRouteId]);
   const treeNodes = useMemo(() => buildTree(folders, routes), [folders, routes]);
+
+  useEffect(() => {
+    if (!selectedRoute) {
+      setDistanceDraft("");
+      return;
+    }
+    const meters = selectedRoute.distanceMeters ?? Math.round(routeDistance(selectedRoute.points));
+    setDistanceDraft(distanceInputValue(meters));
+  }, [selectedRoute?.id, routeMode]);
 
   const clearWorkspace = useCallback(() => {
     setRoutes([]);
@@ -696,7 +722,17 @@ export function App() {
   }, [currentUser, refreshTree]);
 
   useEffect(() => {
+    if (activeView === "map") return;
+    mapRef.current?.destroy();
+    mapRef.current = null;
+    mapLayersRef.current = null;
+    overlaysRef.current.clear();
+    setIsMapReady(false);
+  }, [activeView]);
+
+  useEffect(() => {
     if (!currentUser || authStatus !== "ready") return;
+    if (activeView !== "map") return;
     if (mapRef.current) return;
 
     const key = import.meta.env.VITE_AMAP_KEY as string | undefined;
@@ -739,7 +775,7 @@ export function App() {
     return () => {
       disposed = true;
     };
-  }, [authStatus, currentUser, mapTypeMode, showSatelliteRoadNet]);
+  }, [activeView, authStatus, currentUser, mapTypeMode, showSatelliteRoadNet]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -906,17 +942,33 @@ export function App() {
     const map = mapRef.current;
     const AMapApi = window.AMap;
     if (!map || !AMapApi || !selectedRoute?.points.length) return;
-    const points = selectedRoute.points.map((point) => {
-      const converted = bd09ToGcj02(point);
-      return new AMapApi.LngLat(converted.lng, converted.lat);
+
+    const points = selectedRoute.points
+      .map((point) => bd09ToGcj02(point))
+      .filter((point) => Number.isFinite(point.lng) && Number.isFinite(point.lat));
+    if (points.length === 0) return;
+
+    let minLng = points[0].lng;
+    let maxLng = points[0].lng;
+    let minLat = points[0].lat;
+    let maxLat = points[0].lat;
+    points.slice(1).forEach((point) => {
+      minLng = Math.min(minLng, point.lng);
+      maxLng = Math.max(maxLng, point.lng);
+      minLat = Math.min(minLat, point.lat);
+      maxLat = Math.max(maxLat, point.lat);
     });
-    if (points.length === 1) {
-      map.setZoomAndCenter(18, points[0]);
+    const center = new AMapApi.LngLat((minLng + maxLng) / 2, (minLat + maxLat) / 2);
+
+    if (minLng === maxLng && minLat === maxLat) {
+      map.setZoomAndCenter(18, center);
       return;
     }
-    const bounds = new AMapApi.Bounds(points[0], points[0]);
-    points.slice(1).forEach((point) => bounds.extend(point));
-    map.setBounds(bounds, false, [80, 80, 80, 80], 18);
+
+    const bounds = new AMapApi.Bounds([minLng, minLat], [maxLng, maxLat]);
+    const toolbar = mapToolbarRef.current;
+    const topPadding = toolbar ? toolbar.offsetTop + toolbar.offsetHeight + 24 : 80;
+    map.setBounds(bounds, false, [topPadding, 48, 48, 48], 18);
   }, [selectedRoute]);
 
   const createFolder = async (parentId: string | null) => {
@@ -980,10 +1032,60 @@ export function App() {
     setRoutes((currentRoutes) => currentRoutes.map((route) => (route.id === selectedRoute.id ? { ...route, ...patch } : route)));
   };
 
+  const setRouteCompleted = (isCompleted: boolean) => {
+    if (!selectedRoute) return;
+    if (!isCompleted) {
+      patchSelectedRoute({ completedOn: null, distanceMeters: null, travelMode: null });
+      setDistanceDraft(distanceInputValue(Math.round(routeDistance(selectedRoute.points))));
+      return;
+    }
+    if (selectedRoute.points.length < 2) {
+      setError("路线至少需要两个点才能标记为已完成");
+      return;
+    }
+
+    const distanceMeters = selectedRoute.distanceMeters ?? Math.round(routeDistance(selectedRoute.points));
+    if (distanceMeters < 1) {
+      setError("地图路线距离必须大于 0 才能标记为已完成");
+      return;
+    }
+    patchSelectedRoute({
+      completedOn: selectedRoute.completedOn ?? currentLocalDate(),
+      distanceMeters,
+      travelMode: selectedRoute.travelMode ?? "walking"
+    });
+    setDistanceDraft(distanceInputValue(distanceMeters));
+  };
+
+  const updateDistanceDraft = (value: string) => {
+    setDistanceDraft(value);
+    if (!selectedRoute) return;
+    const kilometers = Number(value);
+    patchSelectedRoute({
+      distanceMeters: Number.isFinite(kilometers) && kilometers > 0 ? Math.round(kilometers * 1000) : null
+    });
+  };
+
+  const recalculateSelectedDistance = () => {
+    if (!selectedRoute) return;
+    const distanceMeters = Math.round(routeDistance(selectedRoute.points));
+    setDistanceDraft(distanceInputValue(distanceMeters));
+    patchSelectedRoute({ distanceMeters: distanceMeters > 0 ? distanceMeters : null });
+  };
+
   const saveSelectedRoute = async () => {
     if (!selectedRouteId) return;
     const routeToSave = findRoute(routesRef.current, selectedRouteId);
     if (!routeToSave) return;
+
+    const hasAnyCompletionField = Boolean(routeToSave.completedOn || routeToSave.distanceMeters || routeToSave.travelMode);
+    if (
+      hasAnyCompletionField &&
+      (!routeToSave.completedOn || !routeToSave.distanceMeters || !routeToSave.travelMode)
+    ) {
+      setError("请完整填写完成日期、距离和出行方式");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -992,16 +1094,19 @@ export function App() {
       const zoom = map?.getZoom();
       const storedCenter = center ? gcj02ToBd09({ lng: center.getLng(), lat: center.getLat() }) : null;
 
+      await api.saveRoutePoints(routeToSave.id, routeToSave.points);
       const updated = await api.updateRoute(routeToSave.id, {
         name: routeToSave.name,
         description: routeToSave.description,
         color: routeToSave.color,
         mapLng: storedCenter?.lng ?? routeToSave.mapLng,
         mapLat: storedCenter?.lat ?? routeToSave.mapLat,
-        mapZoom: zoom ?? routeToSave.mapZoom
+        mapZoom: zoom ?? routeToSave.mapZoom,
+        completedOn: routeToSave.completedOn,
+        distanceMeters: routeToSave.distanceMeters,
+        travelMode: routeToSave.travelMode
       });
-      const withPoints = await api.saveRoutePoints(updated.id, routeToSave.points);
-      setRoutes((currentRoutes) => currentRoutes.map((route) => (route.id === withPoints.id ? withPoints : route)));
+      setRoutes((currentRoutes) => currentRoutes.map((route) => (route.id === updated.id ? updated : route)));
       setDataStatus("已保存");
       setRouteMode("view");
       setSelectedPointIndex(null);
@@ -1134,6 +1239,7 @@ export function App() {
       console.warn(caught);
     } finally {
       setCurrentUser(null);
+      setActiveView("map");
       clearWorkspace();
     }
   };
@@ -1164,6 +1270,10 @@ export function App() {
         onSubmit={submitAuth}
       />
     );
+  }
+
+  if (activeView === "stats") {
+    return <TravelStats currentUser={currentUser} onShowMap={() => setActiveView("map")} onLogout={logout} />;
   }
 
   return (
@@ -1316,8 +1426,16 @@ export function App() {
             路线详情
           </button>
         ) : null}
-        <div className="map-toolbar">
-          <span>{mapStatus}</span>
+        <div ref={mapToolbarRef} className="map-toolbar">
+          <button type="button" className="active" aria-current="page">
+            <MapIcon size={16} />
+            路线地图
+          </button>
+          <button type="button" onClick={() => setActiveView("stats")}>
+            <BarChart3 size={16} />
+            出行统计
+          </button>
+          <span className="map-status-text">{mapStatus}</span>
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />
             聚焦路线
@@ -1360,8 +1478,9 @@ export function App() {
                 </p>
               </div>
               <div className="detail-actions">
-                <button className="icon-button" type="button" title="隐藏右边栏" onClick={() => setIsDetailsCollapsed(true)}>
+                <button className="details-collapse-button" type="button" onClick={() => setIsDetailsCollapsed(true)}>
                   <PanelRightClose size={16} />
+                  收起详情
                 </button>
                 <button className="icon-button" type="button" title="复制路线" onClick={copySelectedRoute}>
                   <Copy size={16} />
@@ -1388,6 +1507,84 @@ export function App() {
                 rows={4}
               />
             </label>
+            <section className="completion-section">
+              <div className="completion-heading">
+                <div>
+                  <strong>完成记录</strong>
+                  <span>{selectedRoute.completedOn ? "已纳入出行统计" : "尚未完成"}</span>
+                </div>
+                <label className="completion-toggle">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedRoute.completedOn)}
+                    disabled={routeMode !== "edit"}
+                    onChange={(event) => setRouteCompleted(event.target.checked)}
+                  />
+                  <span>已完成</span>
+                </label>
+              </div>
+              {selectedRoute.completedOn ? (
+                <div className="completion-fields">
+                  <label>
+                    <span>完成日期</span>
+                    <input
+                      type="date"
+                      value={selectedRoute.completedOn}
+                      disabled={routeMode !== "edit"}
+                      onChange={(event) => patchSelectedRoute({ completedOn: event.target.value || null })}
+                    />
+                  </label>
+                  <div className="completion-mode-field">
+                    <span>出行方式</span>
+                    <div className="mode-segments">
+                      <button
+                        type="button"
+                        className={selectedRoute.travelMode === "walking" ? "active" : ""}
+                        disabled={routeMode !== "edit"}
+                        onClick={() => patchSelectedRoute({ travelMode: "walking" })}
+                      >
+                        步行
+                      </button>
+                      <button
+                        type="button"
+                        className={selectedRoute.travelMode === "vehicle" ? "active" : ""}
+                        disabled={routeMode !== "edit"}
+                        onClick={() => patchSelectedRoute({ travelMode: "vehicle" })}
+                      >
+                        乘车
+                      </button>
+                    </div>
+                  </div>
+                  <label className="distance-field">
+                    <span>距离</span>
+                    <div className="distance-input-row">
+                      <div className="distance-input-wrap">
+                        <input
+                          type="number"
+                          min="0.001"
+                          step="0.001"
+                          inputMode="decimal"
+                          value={distanceDraft}
+                          disabled={routeMode !== "edit"}
+                          onChange={(event) => updateDistanceDraft(event.target.value)}
+                        />
+                        <span>km</span>
+                      </div>
+                      <button
+                        className="recalculate-button"
+                        type="button"
+                        title="按地图路线重新计算"
+                        disabled={routeMode !== "edit"}
+                        onClick={recalculateSelectedDistance}
+                      >
+                        <RotateCcw size={15} />
+                        重算
+                      </button>
+                    </div>
+                  </label>
+                </div>
+              ) : null}
+            </section>
             <div className="field">
               <span>颜色</span>
               <div className="swatches">
@@ -1474,8 +1671,9 @@ export function App() {
           </>
         ) : (
           <div className="empty-state">
-            <button className="icon-button details-empty-toggle" type="button" title="隐藏右边栏" onClick={() => setIsDetailsCollapsed(true)}>
+            <button className="details-collapse-button details-empty-toggle" type="button" onClick={() => setIsDetailsCollapsed(true)}>
               <PanelRightClose size={16} />
+              收起详情
             </button>
             <Route size={28} />
             <h2>选择或创建一条路线</h2>

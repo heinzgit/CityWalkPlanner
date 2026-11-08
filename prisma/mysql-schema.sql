@@ -46,11 +46,16 @@ CREATE TABLE `route_plans` (
     `mapLat` DOUBLE NULL,
     `mapZoom` DOUBLE NULL,
     `sortOrder` INTEGER NOT NULL DEFAULT 0,
+    `completedOn` DATE NULL,
+    `distanceMeters` INTEGER UNSIGNED NULL,
+    `travelMode` VARCHAR(16) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
     INDEX `route_plans_userId_idx`(`userId`),
     INDEX `route_plans_userId_folderId_idx`(`userId`, `folderId`),
+    INDEX `route_plans_userId_completedOn_idx`(`userId`, `completedOn`),
+    INDEX `route_plans_userId_travelMode_completedOn_idx`(`userId`, `travelMode`, `completedOn`),
     INDEX `route_plans_folderId_idx`(`folderId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
