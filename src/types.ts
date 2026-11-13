@@ -49,6 +49,12 @@ export type TravelStatsPayload = {
     walkingDistanceMeters: number;
     vehicleDistanceMeters: number;
   };
+  daily: Array<{
+    date: string;
+    tripCount: number;
+    walkingDistanceMeters: number;
+    vehicleDistanceMeters: number;
+  }>;
   monthly: Array<{
     month: string;
     tripCount: number;

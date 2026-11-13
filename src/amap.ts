@@ -17,6 +17,8 @@ declare global {
       off(event: string, handler: EventHandler): void;
       setZoomAndCenter(zoom: number, center: LngLatLike): void;
       setBounds(bounds: Bounds, immediately?: boolean, avoid?: number[], maxZoom?: number): void;
+      setRotation(rotation: number, immediately?: boolean, duration?: number): void;
+      getRotation(): number;
       getCenter(): LngLat;
       getZoom(): number;
       destroy(): void;
@@ -65,6 +67,10 @@ declare global {
       center?: LngLatLike;
       zoom?: number;
       viewMode?: "2D" | "3D";
+      pitch?: number;
+      rotation?: number;
+      rotateEnable?: boolean;
+      pitchEnable?: boolean;
       resizeEnable?: boolean;
       showLabel?: boolean;
       layers?: Layer[];

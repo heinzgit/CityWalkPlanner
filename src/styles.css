@@ -372,6 +372,11 @@ button {
   height: 100%;
 }
 
+.map-canvas.is-rotating,
+.map-canvas.is-rotating * {
+  cursor: ew-resize !important;
+}
+
 .panel-tab {
   position: absolute;
   top: 14px;
@@ -1124,6 +1129,164 @@ button {
 .stats-section > header span {
   color: #8390a1;
   font-size: 12px;
+}
+
+.daily-stats-section {
+  margin-top: 18px;
+}
+
+.daily-stats-section > header {
+  min-height: 58px;
+}
+
+.daily-stats-section > header > div:first-child span {
+  display: block;
+  margin-top: 4px;
+  color: #8390a1;
+  font-size: 12px;
+}
+
+.daily-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.daily-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #687588;
+  font-size: 12px;
+}
+
+.daily-chart-legend span::before {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: #25845d;
+  content: "";
+}
+
+.daily-chart-legend span.vehicle::before {
+  background: #d77a26;
+}
+
+.daily-chart-scroll {
+  overflow-x: auto;
+  padding: 20px 18px 12px;
+}
+
+.daily-chart {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  height: 250px;
+}
+
+.daily-chart-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 204px;
+  padding-top: 18px;
+  padding-right: 9px;
+  color: #7a8798;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.daily-chart-plot {
+  position: relative;
+  height: 226px;
+}
+
+.daily-chart-grid {
+  position: absolute;
+  inset: 18px 0 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.daily-chart-grid span {
+  display: block;
+  border-top: 1px solid #e6ebf1;
+}
+
+.daily-chart-grid span:last-child {
+  border-color: #cfd8e4;
+}
+
+.daily-chart-bars {
+  position: absolute;
+  inset: 0 0 0;
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+.daily-chart-group {
+  display: grid;
+  grid-template-rows: 204px 22px;
+  flex: 1 0 80px;
+  max-width: 96px;
+  min-width: 72px;
+}
+
+.daily-chart-pair {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  height: 204px;
+  padding-top: 18px;
+}
+
+.daily-chart-bar-column {
+  position: relative;
+  align-self: end;
+  width: 30px;
+  max-height: 100%;
+}
+
+.daily-chart-value {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  color: #4f5d6e;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.daily-chart-bar {
+  display: block;
+  width: 16px;
+  height: 100%;
+  margin: 0 auto;
+  border-radius: 3px 3px 0 0;
+  background: #25845d;
+  transition: filter 120ms ease;
+}
+
+.daily-chart-bar.vehicle {
+  background: #d77a26;
+}
+
+.daily-chart-bar:hover {
+  filter: brightness(0.88);
+}
+
+.daily-chart-date {
+  align-self: end;
+  color: #6e7b8d;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .stats-empty,

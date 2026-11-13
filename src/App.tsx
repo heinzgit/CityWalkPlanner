@@ -36,6 +36,8 @@ import { buildTree, findRoute, getNextVisibility } from "./tree";
 import type { RoutePlan, RoutePoint, TreeNode, User, VisibilityState } from "./types";
 
 const defaultCenter = { lng: 121.4737, lat: 31.2304 };
+const mapRotationStorageKey = "citywalk-map-rotation";
+const mapRotationDegreesPerPixel = 0.5;
 const colorChoices = [
   "#1677ff",
   "#2f54eb",
@@ -233,6 +235,15 @@ function getDirectionArrowColor(color: string) {
   const blue = Number.parseInt(normalized.slice(4, 6), 16);
   const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
   return luminance > 160 ? "#111827" : "#ffffff";
+}
+
+function normalizeMapRotation(rotation: number) {
+  return ((rotation % 360) + 360) % 360;
+}
+
+function isMapRotationModifierPressed(event: PointerEvent) {
+  const isMac = /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent);
+  return isMac ? event.metaKey : event.ctrlKey;
 }
 
 function TreeView({
@@ -473,6 +484,10 @@ export function App() {
   const [showSatelliteRoadNet, setShowSatelliteRoadNet] = useState(() => {
     return window.localStorage.getItem("citywalk-satellite-roadnet") !== "false";
   });
+  const [mapRotation, setMapRotation] = useState(() => {
+    const stored = Number(window.localStorage.getItem(mapRotationStorageKey));
+    return Number.isFinite(stored) ? normalizeMapRotation(stored) : 0;
+  });
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
   const [draggedRouteId, setDraggedRouteId] = useState<string | null>(null);
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
@@ -494,6 +509,7 @@ export function App() {
   const overlaysRef = useRef<Map<string, OverlayBundle>>(new Map());
   const clickHandlerRef = useRef<AMap.EventHandler | null>(null);
   const rightClickHandlerRef = useRef<AMap.EventHandler | null>(null);
+  const rotationChangeHandlerRef = useRef<AMap.EventHandler | null>(null);
   const skipNextMapClickRef = useRef(false);
   const skipNextMapRightClickRef = useRef(false);
   const routesRef = useRef<RoutePlan[]>([]);
@@ -538,6 +554,10 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem("citywalk-satellite-roadnet", String(showSatelliteRoadNet));
   }, [showSatelliteRoadNet]);
+
+  useEffect(() => {
+    window.localStorage.setItem(mapRotationStorageKey, String(Math.round(mapRotation)));
+  }, [mapRotation]);
 
   useEffect(() => {
     setColorDraft(selectedRoute?.color ?? "");
@@ -754,7 +774,11 @@ export function App() {
         const map = new AMapApi.Map(mapContainerRef.current, {
           center: [defaultCenter.lng, defaultCenter.lat],
           zoom: 13,
+          // Keep the existing top-down map while enabling AMap's rotation
+          // gesture and setRotation API.
           viewMode: "2D",
+          rotation: mapRotation,
+          rotateEnable: true,
           resizeEnable: true,
           showLabel: true,
           layers: [normalLayer, satelliteLayer, roadNetLayer]
@@ -783,6 +807,98 @@ export function App() {
     if (!isMapReady || !map || !layers) return;
     updateMapLayerVisibility(layers, mapTypeMode, showSatelliteRoadNet);
   }, [isMapReady, mapTypeMode, showSatelliteRoadNet]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!isMapReady || !map) return;
+    map.setRotation(mapRotation, true);
+  }, [isMapReady, mapRotation]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!isMapReady || !map) return;
+
+    const syncRotation = () => setMapRotation(normalizeMapRotation(map.getRotation()));
+    rotationChangeHandlerRef.current = syncRotation;
+    map.on("rotatechange", syncRotation);
+
+    return () => {
+      map.off("rotatechange", syncRotation);
+      rotationChangeHandlerRef.current = null;
+    };
+  }, [isMapReady]);
+
+  useEffect(() => {
+    const container = mapContainerRef.current;
+    const map = mapRef.current;
+    if (!isMapReady || !container || !map) return;
+
+    let activePointerId: number | null = null;
+    let previousX = 0;
+    let previousY = 0;
+    let mapCenterY = 0;
+    let gestureRotation = 0;
+
+    const stopMapInteraction = (event: PointerEvent) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+
+    const finishRotation = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) return;
+      stopMapInteraction(event);
+      activePointerId = null;
+      container.classList.remove("is-rotating");
+      window.setTimeout(() => {
+        skipNextMapClickRef.current = false;
+      }, 0);
+    };
+
+    const startRotation = (event: PointerEvent) => {
+      if (event.button !== 0 || event.pointerType !== "mouse" || !isMapRotationModifierPressed(event)) return;
+
+      stopMapInteraction(event);
+      const bounds = container.getBoundingClientRect();
+      activePointerId = event.pointerId;
+      previousX = event.clientX;
+      previousY = event.clientY;
+      mapCenterY = bounds.top + bounds.height / 2;
+      gestureRotation = map.getRotation();
+      skipNextMapClickRef.current = true;
+      container.classList.add("is-rotating");
+    };
+
+    const rotateFromPointer = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) return;
+      stopMapInteraction(event);
+
+      const deltaX = event.clientX - previousX;
+      const trajectoryY = (previousY + event.clientY) / 2;
+      const hemisphere = trajectoryY < mapCenterY ? 1 : trajectoryY > mapCenterY ? -1 : 0;
+      if (deltaX !== 0 && hemisphere !== 0) {
+        gestureRotation += deltaX * mapRotationDegreesPerPixel * hemisphere;
+        const nextRotation = normalizeMapRotation(gestureRotation);
+        map.setRotation(nextRotation, true);
+        setMapRotation(nextRotation);
+      }
+
+      previousX = event.clientX;
+      previousY = event.clientY;
+    };
+
+    container.addEventListener("pointerdown", startRotation, true);
+    window.addEventListener("pointermove", rotateFromPointer, true);
+    window.addEventListener("pointerup", finishRotation, true);
+    window.addEventListener("pointercancel", finishRotation, true);
+
+    return () => {
+      container.classList.remove("is-rotating");
+      container.removeEventListener("pointerdown", startRotation, true);
+      window.removeEventListener("pointermove", rotateFromPointer, true);
+      window.removeEventListener("pointerup", finishRotation, true);
+      window.removeEventListener("pointercancel", finishRotation, true);
+    };
+  }, [isMapReady]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -472,6 +472,15 @@ app.get("/api/stats/travel", authenticate, async (req, res, next) => {
         travelMode: mode.data
       }];
     });
+    const dailyMap = new Map<
+      string,
+      {
+        date: string;
+        tripCount: number;
+        walkingDistanceMeters: number;
+        vehicleDistanceMeters: number;
+      }
+    >();
     const monthlyMap = new Map<string, { month: string; tripCount: number; distanceMeters: number }>();
     let walkingDistanceMeters = 0;
     let vehicleDistanceMeters = 0;
@@ -479,6 +488,18 @@ app.get("/api/stats/travel", authenticate, async (req, res, next) => {
     items.forEach((item) => {
       if (item.travelMode === "walking") walkingDistanceMeters += item.distanceMeters;
       if (item.travelMode === "vehicle") vehicleDistanceMeters += item.distanceMeters;
+
+      const dailyBucket = dailyMap.get(item.completedOn) ?? {
+        date: item.completedOn,
+        tripCount: 0,
+        walkingDistanceMeters: 0,
+        vehicleDistanceMeters: 0
+      };
+      dailyBucket.tripCount += 1;
+      if (item.travelMode === "walking") dailyBucket.walkingDistanceMeters += item.distanceMeters;
+      if (item.travelMode === "vehicle") dailyBucket.vehicleDistanceMeters += item.distanceMeters;
+      dailyMap.set(item.completedOn, dailyBucket);
+
       const month = item.completedOn.slice(0, 7);
       const bucket = monthlyMap.get(month) ?? { month, tripCount: 0, distanceMeters: 0 };
       bucket.tripCount += 1;
@@ -493,6 +514,7 @@ app.get("/api/stats/travel", authenticate, async (req, res, next) => {
         walkingDistanceMeters,
         vehicleDistanceMeters
       },
+      daily: [...dailyMap.values()].sort((left, right) => left.date.localeCompare(right.date)),
       monthly: [...monthlyMap.values()].sort((left, right) => right.month.localeCompare(left.month)),
       items
     });

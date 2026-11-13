@@ -10,6 +10,7 @@ const emptyStats: TravelStatsPayload = {
     walkingDistanceMeters: 0,
     vehicleDistanceMeters: 0
   },
+  daily: [],
   monthly: [],
   items: []
 };
@@ -23,6 +24,23 @@ function formatKilometers(meters: number) {
 
 function modeLabel(mode: TravelMode) {
   return mode === "walking" ? "步行" : "乘车";
+}
+
+function chartScaleMeters(maxDistanceMeters: number) {
+  if (maxDistanceMeters <= 0) return 1000;
+  const magnitude = 10 ** Math.floor(Math.log10(maxDistanceMeters));
+  const normalized = maxDistanceMeters / magnitude;
+  const niceValue = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return niceValue * magnitude;
+}
+
+function formatChartDistance(meters: number) {
+  if (meters >= 1000) return `${Number((meters / 1000).toFixed(1))} km`;
+  return `${Math.round(meters)} m`;
+}
+
+function formatBarKilometers(meters: number) {
+  return (meters / 1000).toFixed(2);
 }
 
 export function TravelStats({
@@ -65,6 +83,16 @@ export function TravelStats({
   const maxMonthlyDistance = useMemo(
     () => Math.max(1, ...stats.monthly.map((item) => item.distanceMeters)),
     [stats.monthly]
+  );
+  const dailyScaleMeters = useMemo(
+    () =>
+      chartScaleMeters(
+        Math.max(
+          0,
+          ...stats.daily.flatMap((item) => [item.walkingDistanceMeters, item.vehicleDistanceMeters])
+        )
+      ),
+    [stats.daily]
   );
 
   return (
@@ -148,6 +176,78 @@ export function TravelStats({
             <span>乘车距离</span>
             <strong>{formatKilometers(stats.summary.vehicleDistanceMeters)}</strong>
           </div>
+        </section>
+
+        <section className="stats-section daily-stats-section">
+          <header>
+            <div>
+              <h3>每日出行距离（km）</h3>
+              <span>{stats.daily.length} 天有出行记录</span>
+            </div>
+            <div className="daily-chart-legend" aria-label="图例">
+              <span className="walking">步行</span>
+              <span className="vehicle">乘车</span>
+            </div>
+          </header>
+          {stats.daily.length === 0 ? (
+            <div className="stats-empty">当前筛选范围内没有完成记录</div>
+          ) : (
+            <div className="daily-chart-scroll">
+              <div className="daily-chart" style={{ minWidth: Math.max(620, stats.daily.length * 96 + 58) }}>
+                <div className="daily-chart-y-axis" aria-hidden="true">
+                  <span>{formatChartDistance(dailyScaleMeters)}</span>
+                  <span>{formatChartDistance(dailyScaleMeters / 2)}</span>
+                  <span>0</span>
+                </div>
+                <div className="daily-chart-plot">
+                  <div className="daily-chart-grid" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <div className="daily-chart-bars">
+                    {stats.daily.map((item) => (
+                      <div className="daily-chart-group" key={item.date}>
+                        <div className="daily-chart-pair">
+                          <div
+                            className="daily-chart-bar-column"
+                            style={{ height: `${(item.walkingDistanceMeters / dailyScaleMeters) * 100}%` }}
+                          >
+                            {item.walkingDistanceMeters > 0 ? (
+                              <span className="daily-chart-value">{formatBarKilometers(item.walkingDistanceMeters)}</span>
+                            ) : null}
+                            <span
+                              className="daily-chart-bar walking"
+                              title={`${item.date} 步行 ${formatKilometers(item.walkingDistanceMeters)}`}
+                              role="img"
+                              aria-label={`${item.date} 步行 ${formatKilometers(item.walkingDistanceMeters)}`}
+                            />
+                          </div>
+                          <div
+                            className="daily-chart-bar-column"
+                            style={{ height: `${(item.vehicleDistanceMeters / dailyScaleMeters) * 100}%` }}
+                          >
+                            {item.vehicleDistanceMeters > 0 ? (
+                              <span className="daily-chart-value">{formatBarKilometers(item.vehicleDistanceMeters)}</span>
+                            ) : null}
+                            <span
+                              className="daily-chart-bar vehicle"
+                              title={`${item.date} 乘车 ${formatKilometers(item.vehicleDistanceMeters)}`}
+                              role="img"
+                              aria-label={`${item.date} 乘车 ${formatKilometers(item.vehicleDistanceMeters)}`}
+                            />
+                          </div>
+                        </div>
+                        <span className="daily-chart-date" title={`${item.date}，${item.tripCount} 次出行`}>
+                          {item.date.slice(5).replace("-", "/")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         <div className="stats-grid">
