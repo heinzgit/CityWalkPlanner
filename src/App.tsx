@@ -12,10 +12,12 @@ import {
   Folder,
   FolderPlus,
   LogOut,
+  Maximize2,
   PanelLeftClose,
   PanelRightClose,
   LocateFixed,
   Map as MapIcon,
+  Minimize2,
   Minus,
   Plus,
   Satellite,
@@ -514,9 +516,11 @@ export function App() {
   const skipNextMapRightClickRef = useRef(false);
   const routesRef = useRef<RoutePlan[]>([]);
   const kmzInputRef = useRef<HTMLInputElement | null>(null);
+  const collapsedPanelsBeforeFullscreenRef = useRef<{ sidebar: boolean; details: boolean } | null>(null);
 
   const selectedRoute = useMemo(() => findRoute(routes, selectedRouteId), [routes, selectedRouteId]);
   const treeNodes = useMemo(() => buildTree(folders, routes), [folders, routes]);
+  const isMapFullscreen = isSidebarCollapsed && isDetailsCollapsed;
 
   useEffect(() => {
     if (!selectedRoute) {
@@ -1087,6 +1091,23 @@ export function App() {
     map.setBounds(bounds, false, [topPadding, 48, 48, 48], 18);
   }, [selectedRoute]);
 
+  const toggleMapFullscreen = useCallback(() => {
+    if (isMapFullscreen) {
+      const previous = collapsedPanelsBeforeFullscreenRef.current ?? { sidebar: false, details: false };
+      setIsSidebarCollapsed(previous.sidebar);
+      setIsDetailsCollapsed(previous.details);
+      collapsedPanelsBeforeFullscreenRef.current = null;
+      return;
+    }
+
+    collapsedPanelsBeforeFullscreenRef.current = {
+      sidebar: isSidebarCollapsed,
+      details: isDetailsCollapsed
+    };
+    setIsSidebarCollapsed(true);
+    setIsDetailsCollapsed(true);
+  }, [isDetailsCollapsed, isMapFullscreen, isSidebarCollapsed]);
+
   const createFolder = async (parentId: string | null) => {
     const name = window.prompt(parentId ? "二级目录名称" : "一级目录名称", parentId ? "新的二级目录" : "新的一级目录");
     if (!name) return;
@@ -1555,6 +1576,16 @@ export function App() {
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />
             聚焦路线
+          </button>
+          <button
+            type="button"
+            className={isMapFullscreen ? "active" : ""}
+            aria-pressed={isMapFullscreen}
+            title={isMapFullscreen ? "恢复左右面板" : "折叠左右面板"}
+            onClick={toggleMapFullscreen}
+          >
+            {isMapFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            {isMapFullscreen ? "退出全屏" : "全屏显示"}
           </button>
           <button
             type="button"

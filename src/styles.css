@@ -432,6 +432,19 @@ button {
   font-size: 13px;
 }
 
+.app-shell.sidebar-collapsed .map-toolbar {
+  left: 56px;
+  max-width: calc(100% - 70px);
+}
+
+.app-shell.details-collapsed .map-toolbar {
+  max-width: calc(100% - 70px);
+}
+
+.app-shell.sidebar-collapsed.details-collapsed .map-toolbar {
+  max-width: calc(100% - 112px);
+}
+
 .map-toolbar button,
 .save-button {
   display: inline-flex;
