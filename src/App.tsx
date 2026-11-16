@@ -1601,11 +1601,14 @@ export function App() {
             <BarChart3 size={16} />
             出行统计
           </button>
-          <span className="map-status-text">{mapStatus}</span>
+          {mapStatus !== "地图已加载" ? <span className="map-status-text">{mapStatus}</span> : null}
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />
             聚焦路线
           </button>
+          <span className={`mode-pill ${routeMode}`}>{routeMode === "edit" ? "编辑中" : "显示模式"}</span>
+        </div>
+        <div className="map-controls-top-right map-control-group">
           <div className="route-display-switch" role="radiogroup" aria-label="显示线路">
             <span className="route-display-label">线路</span>
             <button
@@ -1646,6 +1649,8 @@ export function App() {
             {isMapFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             {isMapFullscreen ? "退出全屏" : "全屏显示"}
           </button>
+        </div>
+        <div className="map-controls-bottom-right map-control-group">
           <button
             type="button"
             className={mapTypeMode === "satellite" ? "active" : ""}
@@ -1667,7 +1672,6 @@ export function App() {
               {showSatelliteRoadNet ? "路网开" : "路网关"}
             </button>
           ) : null}
-          <span className={`mode-pill ${routeMode}`}>{routeMode === "edit" ? "编辑中" : "显示模式"}</span>
         </div>
         {error ? <div className="error-banner">{error}</div> : null}
       </section>

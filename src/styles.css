@@ -413,16 +413,13 @@ button {
   border-radius: 7px 0 0 7px;
 }
 
-.map-toolbar {
+.map-toolbar,
+.map-control-group {
   position: absolute;
-  top: 14px;
-  left: 14px;
   z-index: 50;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  max-width: calc(100% - 28px);
   padding: 8px 10px;
   border: 1px solid #dce3ee;
   border-radius: 8px;
@@ -432,20 +429,46 @@ button {
   font-size: 13px;
 }
 
+.map-toolbar {
+  top: 14px;
+  left: 14px;
+  flex-wrap: wrap;
+  max-width: calc(100% - 28px);
+}
+
+.map-controls-top-right {
+  top: 14px;
+  right: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: calc(100% - 28px);
+}
+
+.map-controls-bottom-right {
+  right: 14px;
+  bottom: 14px;
+}
+
 .app-shell.sidebar-collapsed .map-toolbar {
   left: 56px;
-  max-width: calc(100% - 70px);
+  max-width: calc(100% - 126px);
 }
 
 .app-shell.details-collapsed .map-toolbar {
-  max-width: calc(100% - 70px);
+  max-width: calc(100% - 126px);
 }
 
 .app-shell.sidebar-collapsed.details-collapsed .map-toolbar {
-  max-width: calc(100% - 112px);
+  max-width: calc(100% - 168px);
+}
+
+.app-shell.details-collapsed .map-controls-top-right {
+  right: 56px;
+  max-width: calc(100% - 70px);
 }
 
 .map-toolbar button,
+.map-control-group button,
 .save-button {
   display: inline-flex;
   align-items: center;
@@ -458,13 +481,15 @@ button {
   color: #1b3558;
 }
 
-.map-toolbar button.active {
+.map-toolbar button.active,
+.map-control-group button.active {
   border-color: #9ec0ff;
   background: #eaf2ff;
   color: #0f5fd8;
 }
 
-.map-toolbar button:hover {
+.map-toolbar button:hover,
+.map-control-group button:hover {
   border-color: #9fb4cf;
   background: #f7fafd;
 }
@@ -485,7 +510,7 @@ button {
   font-weight: 700;
 }
 
-.map-toolbar .route-display-switch button {
+.map-control-group .route-display-switch button {
   min-height: 28px;
   padding: 0 9px;
   border: 0;
@@ -495,17 +520,17 @@ button {
   font-size: 12px;
 }
 
-.map-toolbar .route-display-switch button + button {
+.map-control-group .route-display-switch button + button {
   margin-left: 2px;
 }
 
-.map-toolbar .route-display-switch button.active {
+.map-control-group .route-display-switch button.active {
   background: #ffffff;
   box-shadow: 0 1px 3px rgba(27, 53, 88, 0.16);
   color: #0f5fd8;
 }
 
-.map-toolbar .route-display-switch button:hover {
+.map-control-group .route-display-switch button:hover {
   border: 0;
   background: #ffffff;
 }
@@ -534,7 +559,7 @@ button {
 
 .error-banner {
   position: absolute;
-  right: 14px;
+  left: 14px;
   bottom: 14px;
   max-width: min(520px, calc(100% - 28px));
   padding: 10px 12px;
@@ -1477,6 +1502,12 @@ button {
   color: #995410;
 }
 
+@media (max-width: 1500px) {
+  .map-toolbar {
+    top: 68px;
+  }
+}
+
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -1591,6 +1622,18 @@ button {
 
   .route-display-label {
     display: none;
+  }
+
+  .map-controls-top-right {
+    gap: 6px;
+  }
+
+  .map-control-group .route-display-switch button {
+    padding: 0 6px;
+  }
+
+  .app-shell.details-collapsed .map-toolbar {
+    top: 110px;
   }
 
   .stats-filters {
