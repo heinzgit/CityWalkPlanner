@@ -469,6 +469,47 @@ button {
   background: #f7fafd;
 }
 
+.route-display-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid #cbd8e8;
+  border-radius: 7px;
+  background: #f4f7fb;
+}
+
+.route-display-label {
+  padding: 0 7px 0 5px;
+  color: #68778a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.map-toolbar .route-display-switch button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #526071;
+  font-size: 12px;
+}
+
+.map-toolbar .route-display-switch button + button {
+  margin-left: 2px;
+}
+
+.map-toolbar .route-display-switch button.active {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(27, 53, 88, 0.16);
+  color: #0f5fd8;
+}
+
+.map-toolbar .route-display-switch button:hover {
+  border: 0;
+  background: #ffffff;
+}
+
 .mode-pill {
   display: inline-flex;
   align-items: center;
@@ -1545,6 +1586,10 @@ button {
 @media (max-width: 560px) {
   .map-status-text,
   .map-toolbar .mode-pill {
+    display: none;
+  }
+
+  .route-display-label {
     display: none;
   }
 

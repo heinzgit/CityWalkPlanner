@@ -39,6 +39,7 @@ import type { RoutePlan, RoutePoint, TreeNode, User, VisibilityState } from "./t
 
 const defaultCenter = { lng: 121.4737, lat: 31.2304 };
 const mapRotationStorageKey = "citywalk-map-rotation";
+const routeDisplayModeStorageKey = "citywalk-route-display-mode";
 const mapRotationDegreesPerPixel = 0.5;
 const colorChoices = [
   "#1677ff",
@@ -72,7 +73,14 @@ const editPointIcon =
   );
 type RouteMode = "view" | "edit";
 type MapTypeMode = "normal" | "satellite";
+type RouteDisplayMode = "walking" | "transit" | "all";
 type MapLayers = { normal: AMap.Layer; satellite: AMap.Layer; roadNet: AMap.Layer };
+
+function isRouteShownInDisplayMode(route: RoutePlan, displayMode: RouteDisplayMode) {
+  if (displayMode === "walking") return route.travelMode === "walking";
+  if (displayMode === "transit") return route.travelMode === "vehicle";
+  return true;
+}
 
 function updateMapLayerVisibility(layers: MapLayers, mode: MapTypeMode, showRoadNet: boolean) {
   if (mode === "satellite") {
@@ -486,6 +494,10 @@ export function App() {
   const [showSatelliteRoadNet, setShowSatelliteRoadNet] = useState(() => {
     return window.localStorage.getItem("citywalk-satellite-roadnet") !== "false";
   });
+  const [routeDisplayMode, setRouteDisplayMode] = useState<RouteDisplayMode>(() => {
+    const stored = window.localStorage.getItem(routeDisplayModeStorageKey);
+    return stored === "walking" || stored === "transit" ? stored : "all";
+  });
   const [mapRotation, setMapRotation] = useState(() => {
     const stored = Number(window.localStorage.getItem(mapRotationStorageKey));
     return Number.isFinite(stored) ? normalizeMapRotation(stored) : 0;
@@ -558,6 +570,10 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem("citywalk-satellite-roadnet", String(showSatelliteRoadNet));
   }, [showSatelliteRoadNet]);
+
+  useEffect(() => {
+    window.localStorage.setItem(routeDisplayModeStorageKey, routeDisplayMode);
+  }, [routeDisplayMode]);
 
   useEffect(() => {
     window.localStorage.setItem(mapRotationStorageKey, String(Math.round(mapRotation)));
@@ -911,14 +927,17 @@ export function App() {
 
     overlaysRef.current.forEach((bundle, routeId) => {
       const route = routes.find((item) => item.id === routeId);
-      if (!route || !route.isVisible) {
+      if (!route || !route.isVisible || !isRouteShownInDisplayMode(route, routeDisplayMode)) {
         map.remove([bundle.polyline, ...bundle.markers]);
         overlaysRef.current.delete(routeId);
       }
     });
 
     routes
-      .filter((route) => route.isVisible && route.points.length > 0)
+      .filter(
+        (route) =>
+          route.isVisible && route.points.length > 0 && isRouteShownInDisplayMode(route, routeDisplayMode)
+      )
       .forEach((route) => {
         const existing = overlaysRef.current.get(route.id);
         if (existing) {
@@ -1005,7 +1024,17 @@ export function App() {
         map.add([polyline, ...markers]);
         overlaysRef.current.set(route.id, { polyline, markers });
       });
-  }, [routes, selectedRouteId, routeMode, selectedPointIndex, isMapReady, updateRoutePoint, deleteSelectedPoint, showRouteDirectionArrows]);
+  }, [
+    routes,
+    selectedRouteId,
+    routeMode,
+    routeDisplayMode,
+    selectedPointIndex,
+    isMapReady,
+    updateRoutePoint,
+    deleteSelectedPoint,
+    showRouteDirectionArrows
+  ]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1577,6 +1606,36 @@ export function App() {
             <LocateFixed size={16} />
             聚焦路线
           </button>
+          <div className="route-display-switch" role="radiogroup" aria-label="显示线路">
+            <span className="route-display-label">线路</span>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={routeDisplayMode === "walking"}
+              className={routeDisplayMode === "walking" ? "active" : ""}
+              onClick={() => setRouteDisplayMode("walking")}
+            >
+              走路
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={routeDisplayMode === "transit"}
+              className={routeDisplayMode === "transit" ? "active" : ""}
+              onClick={() => setRouteDisplayMode("transit")}
+            >
+              公交
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={routeDisplayMode === "all"}
+              className={routeDisplayMode === "all" ? "active" : ""}
+              onClick={() => setRouteDisplayMode("all")}
+            >
+              走路和公交
+            </button>
+          </div>
           <button
             type="button"
             className={isMapFullscreen ? "active" : ""}
