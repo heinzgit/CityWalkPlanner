@@ -35,12 +35,13 @@ import { simplifyRoutePoints } from "./routeSimplify";
 import { TravelStats } from "./TravelStats";
 import type { ImportedKmzFolder } from "./kmz";
 import { buildTree, findRoute, getNextVisibility } from "./tree";
-import type { RoutePlan, RoutePoint, TreeNode, User, VisibilityState } from "./types";
+import type { RoutePlan, RoutePoint, TravelMode, TreeNode, User, VisibilityState } from "./types";
 
 const defaultCenter = { lng: 121.4737, lat: 31.2304 };
 const mapRotationStorageKey = "citywalk-map-rotation";
 const routeDisplayModeStorageKey = "citywalk-route-display-mode";
 const mapRotationDegreesPerPixel = 0.5;
+const completionDefaultYear = 2026;
 const colorChoices = [
   "#1677ff",
   "#2f54eb",
@@ -232,6 +233,37 @@ function currentLocalDate() {
   const now = new Date();
   const offsetDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
   return offsetDate.toISOString().slice(0, 10);
+}
+
+function completionDateFromRouteName(name: string) {
+  const dateText = name.trim().split(/\s+/, 1)[0] ?? "";
+  const withYear = dateText.match(/^(\d{4})(?:年|[-./])(\d{1,2})(?:月|[-./])(\d{1,2})(?:日|号)?$/);
+  const withoutYear = dateText.match(/^(\d{1,2})(?:月|[-./])(\d{1,2})(?:日|号)?$/);
+  const compactWithYear = dateText.match(/^(\d{4})(\d{2})(\d{2})$/);
+  const compactWithoutYear = dateText.match(/^(\d{2})(\d{2})$/);
+
+  const parts = withYear
+    ? { year: Number(withYear[1]), month: Number(withYear[2]), day: Number(withYear[3]) }
+    : withoutYear
+      ? { year: completionDefaultYear, month: Number(withoutYear[1]), day: Number(withoutYear[2]) }
+      : compactWithYear
+        ? { year: Number(compactWithYear[1]), month: Number(compactWithYear[2]), day: Number(compactWithYear[3]) }
+        : compactWithoutYear
+          ? { year: completionDefaultYear, month: Number(compactWithoutYear[1]), day: Number(compactWithoutYear[2]) }
+          : null;
+
+  if (!parts || parts.month < 1 || parts.month > 12 || parts.day < 1) return null;
+  const daysInMonth = new Date(Date.UTC(parts.year, parts.month, 0)).getUTCDate();
+  if (parts.day > daysInMonth) return null;
+
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function completionTravelModeFromRouteColor(color: string): TravelMode | null {
+  const normalizedColor = color.trim().toLowerCase();
+  if (normalizedColor === "#19a974") return "walking";
+  if (normalizedColor === "#2f54eb") return "vehicle";
+  return null;
 }
 
 function getInputColor(color: string) {
@@ -432,7 +464,12 @@ function TreeView({
               }}
             >
               {node.type === "folder" ? <Folder size={16} /> : <Route size={16} />}
-              <span>{node.name}</span>
+              <span className="node-name">{node.name}</span>
+              {node.type === "route" && !node.completedOn ? (
+                <span className="route-incomplete-badge" title="该路线尚未完成">
+                  未完成
+                </span>
+              ) : null}
             </button>
           </div>
           {node.type === "folder" && expandedFolderIds.has(node.id) && node.children.length > 0 ? (
@@ -1216,9 +1253,9 @@ export function App() {
       return;
     }
     patchSelectedRoute({
-      completedOn: selectedRoute.completedOn ?? currentLocalDate(),
+      completedOn: selectedRoute.completedOn ?? completionDateFromRouteName(selectedRoute.name) ?? currentLocalDate(),
       distanceMeters,
-      travelMode: selectedRoute.travelMode ?? "walking"
+      travelMode: selectedRoute.travelMode ?? completionTravelModeFromRouteColor(selectedRoute.color) ?? "walking"
     });
     setDistanceDraft(distanceInputValue(distanceMeters));
   };
