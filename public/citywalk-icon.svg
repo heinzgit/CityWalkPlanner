@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">CityWalk Planner</title>
+  <desc id="desc">CityWalk route marker</desc>
+  <defs>
+    <linearGradient id="background" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#19a974" />
+      <stop offset="1" stop-color="#2f54eb" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#background)" />
+  <path d="M18 47c7-2 9-8 9-14 0-5 2-9 7-11 5-2 9 0 12 4" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="5" />
+  <circle cx="18" cy="47" r="6" fill="#fff" />
+  <circle cx="46" cy="26" r="6" fill="#fff" />
+  <circle cx="18" cy="47" r="2.5" fill="#19a974" />
+  <circle cx="46" cy="26" r="2.5" fill="#2f54eb" />
+</svg>

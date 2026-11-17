@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   BarChart3,
+  CheckCheck,
   Copy,
   Edit3,
   Eye,
@@ -41,7 +42,7 @@ const defaultCenter = { lng: 121.4737, lat: 31.2304 };
 const mapRotationStorageKey = "citywalk-map-rotation";
 const routeDisplayModeStorageKey = "citywalk-route-display-mode";
 const mapRotationDegreesPerPixel = 0.5;
-const completionDefaultYear = 2026;
+const completionDefaultYear = new Date().getFullYear();
 const colorChoices = [
   "#1677ff",
   "#2f54eb",
@@ -264,6 +265,21 @@ function completionTravelModeFromRouteColor(color: string): TravelMode | null {
   if (normalizedColor === "#19a974") return "walking";
   if (normalizedColor === "#2f54eb") return "vehicle";
   return null;
+}
+
+type RouteCompletionPatch = Pick<RoutePlan, "completedOn" | "distanceMeters" | "travelMode">;
+
+function buildRouteCompletionPatch(route: RoutePlan): RouteCompletionPatch | null {
+  if (route.points.length < 2) return null;
+
+  const distanceMeters = Math.round(routeDistance(route.points));
+  if (distanceMeters < 1) return null;
+
+  return {
+    completedOn: completionDateFromRouteName(route.name) ?? currentLocalDate(),
+    distanceMeters,
+    travelMode: completionTravelModeFromRouteColor(route.color) ?? "walking"
+  };
 }
 
 function getInputColor(color: string) {
@@ -547,6 +563,7 @@ export function App() {
   const [treeContextMenu, setTreeContextMenu] = useState<TreeContextMenu | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [bulkCompletionProgress, setBulkCompletionProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [colorDraft, setColorDraft] = useState("");
   const [showRouteDirectionArrows, setShowRouteDirectionArrows] = useState(false);
@@ -1220,6 +1237,82 @@ export function App() {
     await refreshTree();
   };
 
+  const completeAllUnfinishedRoutes = async () => {
+    if (routeMode === "edit" || bulkCompletionProgress) return;
+
+    setError(null);
+    let latestRoutes: RoutePlan[];
+    try {
+      latestRoutes = (await api.getTree()).routes;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "读取最新路线失败");
+      return;
+    }
+
+    const unfinishedRoutes = latestRoutes.filter((route) => !route.completedOn);
+    const candidates = unfinishedRoutes.flatMap((route) => {
+      const patch = buildRouteCompletionPatch(route);
+      return patch ? [{ route, patch }] : [];
+    });
+    const skippedCount = unfinishedRoutes.length - candidates.length;
+
+    if (unfinishedRoutes.length === 0) {
+      setDataStatus("没有未完成路线");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      [
+        `发现 ${unfinishedRoutes.length} 条未完成路线，其中 ${candidates.length} 条可标记，${skippedCount} 条因点位不足将跳过。`,
+        "",
+        "完成日期：从路线名称解析，无法解析时使用今天。",
+        "出行方式：#19a974 为步行，#2f54eb 为乘车，其他颜色按步行处理。",
+        "距离：根据当前路线点位重新计算。",
+        "",
+        "确定开始批量处理吗？"
+      ].join("\n")
+    );
+    if (!confirmed) return;
+
+    if (candidates.length === 0) {
+      setError(`没有可标记的路线；${skippedCount} 条未完成路线均缺少有效点位`);
+      return;
+    }
+
+    const failures: string[] = [];
+    let completedCount = 0;
+    setBulkCompletionProgress({ current: 0, total: candidates.length });
+
+    try {
+      for (let index = 0; index < candidates.length; index += 1) {
+        const { route, patch } = candidates[index];
+        setBulkCompletionProgress({ current: index + 1, total: candidates.length });
+        setDataStatus(`正在批量标记 ${index + 1}/${candidates.length}`);
+
+        try {
+          await api.updateRoute(route.id, patch);
+          completedCount += 1;
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : "更新失败";
+          failures.push(`${route.name}：${message}`);
+        }
+      }
+
+      await refreshTree();
+      setDataStatus(`批量处理完成：成功 ${completedCount}，跳过 ${skippedCount}，失败 ${failures.length}`);
+      if (failures.length > 0) {
+        const visibleFailures = failures.slice(0, 5).join("；");
+        const remaining = failures.length > 5 ? `；另有 ${failures.length - 5} 条失败` : "";
+        setError(`批量处理部分失败：${visibleFailures}${remaining}`);
+      }
+    } catch (caught) {
+      setDataStatus(`批量更新已执行：成功 ${completedCount}，页面刷新失败`);
+      setError(caught instanceof Error ? caught.message : "刷新批量处理结果失败");
+    } finally {
+      setBulkCompletionProgress(null);
+    }
+  };
+
   const toggleVisibility = async (node: TreeNode) => {
     const nextVisible = getNextVisibility(node.visibilityState);
     if (node.type === "folder") {
@@ -1642,6 +1735,18 @@ export function App() {
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />
             聚焦路线
+          </button>
+          <button
+            className="bulk-complete-button"
+            type="button"
+            title={routeMode === "edit" ? "请先保存或退出路线编辑" : "按名称、颜色和点位批量标记未完成路线"}
+            disabled={routeMode === "edit" || Boolean(bulkCompletionProgress)}
+            onClick={completeAllUnfinishedRoutes}
+          >
+            <CheckCheck size={16} />
+            {bulkCompletionProgress
+              ? `处理中 ${bulkCompletionProgress.current}/${bulkCompletionProgress.total}`
+              : "批量标记已完成"}
           </button>
           <span className={`mode-pill ${routeMode}`}>{routeMode === "edit" ? "编辑中" : "显示模式"}</span>
         </div>

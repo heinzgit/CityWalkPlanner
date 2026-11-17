@@ -44,6 +44,7 @@ Page({
     routeListRows: [],
     expandedFolderIds: [],
     selectedRouteId: "",
+    showLocalRoutesOnly: false,
     shouldShowLocation: false,
     isRecording: false,
     locationMode: "",
@@ -206,8 +207,8 @@ Page({
     );
   },
 
-  buildDisplayRoutes(routes, localWalks) {
-    const serverRoutes = routes.map((route) => ({
+  buildDisplayRoutes(routes, localWalks, showLocalRoutesOnly = this.data.showLocalRoutesOnly) {
+    const serverRoutes = (showLocalRoutesOnly ? [] : routes).map((route) => ({
       ...route,
       sourceType: "server",
       pointSystem: "bd09"
@@ -231,7 +232,7 @@ Page({
     return [...serverRoutes, ...localRoutes];
   },
 
-  buildRouteTree(folders, displayRoutes) {
+  buildRouteTree(folders, displayRoutes, showLocalRoutesOnly = this.data.showLocalRoutesOnly) {
     const folderMap = {};
     const rootNodes = [];
 
@@ -306,7 +307,17 @@ Page({
       });
     };
 
-    return hydrate(rootNodes);
+    const hydratedNodes = hydrate(rootNodes);
+    if (!showLocalRoutesOnly) return hydratedNodes;
+
+    const pruneEmptyFolders = (nodes) =>
+      nodes.flatMap((node) => {
+        if (node.type !== "folder") return [node];
+        const children = pruneEmptyFolders(node.children || []);
+        return children.length > 0 ? [{ ...node, children, routeCount: this.countRoutes(children) }] : [];
+      });
+
+    return pruneEmptyFolders(hydratedNodes);
   },
 
   countRoutes(nodes) {
@@ -415,6 +426,26 @@ Page({
 
   closeRoutePanel() {
     this.setData({ isRoutePanelVisible: false });
+  },
+
+  toggleLocalRoutesOnly() {
+    const showLocalRoutesOnly = !this.data.showLocalRoutesOnly;
+    const displayRoutes = this.buildDisplayRoutes(this.data.routes, this.data.localWalks, showLocalRoutesOnly);
+    const routeTreeNodes = this.buildRouteTree(this.data.folders, displayRoutes, showLocalRoutesOnly);
+    const expandedFolderIds = this.mergeExpandedFolderIds(routeTreeNodes);
+    const selectedRouteId = this.resolveSelectedRouteId(displayRoutes);
+
+    this.setData(
+      {
+        showLocalRoutesOnly,
+        displayRoutes,
+        routeTreeNodes,
+        routeListRows: this.flattenRouteTree(routeTreeNodes, expandedFolderIds),
+        expandedFolderIds,
+        selectedRouteId
+      },
+      () => this.renderPolylines()
+    );
   },
 
   renderPolylines() {

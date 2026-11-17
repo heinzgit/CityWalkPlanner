@@ -10,6 +10,13 @@
     markers="{{markers}}"
   />
 
+  <button
+    class="local-route-filter-button {{showLocalRoutesOnly ? 'active' : ''}}"
+    bindtap="toggleLocalRoutesOnly"
+  >
+    {{showLocalRoutesOnly ? '显示全部路线' : '只显示本地路线'}}
+  </button>
+
   <view class="toolbar">
     <view class="sampling-settings">
       <view>

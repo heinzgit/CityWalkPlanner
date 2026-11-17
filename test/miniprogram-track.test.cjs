@@ -240,6 +240,24 @@ test("local display routes preserve the walk color and fall back for legacy draf
   assert.equal(displayRoutes[1].travelMode, "walking");
 });
 
+test("local-only mode hides server routes and empty server folders", () => {
+  const { page } = createMapPage();
+  page.data.showLocalRoutesOnly = true;
+  const displayRoutes = page.buildDisplayRoutes(
+    [{ id: "server-route", name: "服务器路线", points: [{ lng: 1, lat: 1 }, { lng: 2, lat: 2 }], isVisible: true }],
+    [{ id: "local-route", name: "本地路线", points: [{ lng: 1, lat: 1 }, { lng: 2, lat: 2 }] }]
+  );
+
+  assert.equal(displayRoutes.length, 1);
+  assert.equal(displayRoutes[0].id, "local-route");
+  const tree = page.buildRouteTree(
+    [{ id: "empty-folder", name: "空目录", parentId: null, sortOrder: 0 }],
+    displayRoutes
+  );
+  assert.equal(tree.some((node) => node.id === "empty-folder"), false);
+  assert.equal(tree.some((node) => node.id === "__local_walks__"), true);
+});
+
 test("local sync patches completion fields when an older create endpoint ignores them", async () => {
   const requests = [];
   const apiMock = {
