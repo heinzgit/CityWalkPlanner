@@ -93,7 +93,16 @@ export const api = {
       body: JSON.stringify({ isVisible })
     }),
   copyRoute: (id: string) => request<RoutePlan>(`/api/routes/${id}/copy`, { method: "POST" }),
-  createRouteFromWalk: (payload: { name: string; description?: string | null; folderId?: string | null; color?: string; points: RoutePoint[] }) =>
+  createRouteFromWalk: (payload: {
+    name: string;
+    description?: string | null;
+    folderId?: string | null;
+    color?: string;
+    points: RoutePoint[];
+    completedOn?: string;
+    distanceMeters?: number;
+    travelMode?: TravelMode;
+  }) =>
     request<RoutePlan>("/api/routes/from-walk", {
       method: "POST",
       body: JSON.stringify(payload)

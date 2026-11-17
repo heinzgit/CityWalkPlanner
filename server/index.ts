@@ -703,9 +703,19 @@ app.post("/api/routes/from-walk", authenticate, async (req, res, next) => {
         description: z.string().nullable().optional(),
         folderId: optionalIdSchema,
         color: colorSchema.optional(),
-        points: z.array(routePointSchema).min(2)
+        points: z.array(routePointSchema).min(2),
+        completedOn: dateOnlySchema.optional(),
+        distanceMeters: z.number().int().min(1).max(4_294_967_295).optional(),
+        travelMode: travelModeSchema.optional()
       })
       .parse(req.body);
+
+    const completionFields = [input.completedOn, input.distanceMeters, input.travelMode];
+    const hasAnyCompletionField = completionFields.some((value) => value !== undefined);
+    const hasEveryCompletionField = completionFields.every((value) => value !== undefined);
+    if (hasAnyCompletionField && !hasEveryCompletionField) {
+      throw validationError("Completion date, distance, and travel mode must be saved together");
+    }
 
     await ensureFolderBelongsToUser(userId, input.folderId ?? null);
 
@@ -716,7 +726,10 @@ app.post("/api/routes/from-walk", authenticate, async (req, res, next) => {
         description: input.description ?? null,
         folderId: input.folderId ?? null,
         color: input.color ?? "#f59e0b",
-        pointsJson: input.points
+        pointsJson: input.points,
+        completedOn: input.completedOn ?? null,
+        distanceMeters: input.distanceMeters ?? null,
+        travelMode: input.travelMode ?? null
       }
     });
 

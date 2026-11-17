@@ -1,6 +1,9 @@
 const earthRadiusMeters = 6371000;
+const defaultSamplingIntervalSeconds = 20;
+const minSamplingIntervalSeconds = 1;
+const maxSamplingIntervalSeconds = 300;
 const defaultTrackOptions = {
-  minIntervalMs: 20000,
+  minIntervalMs: defaultSamplingIntervalSeconds * 1000,
   minDistanceMeters: 5,
   stationaryDistanceMeters: 8,
   stationarySpeedMetersPerSecond: 0.6,
@@ -8,6 +11,18 @@ const defaultTrackOptions = {
   accuracyNoiseRatio: 0.15,
   maxAccuracyDistanceMeters: 12
 };
+
+function normalizeSamplingIntervalSeconds(value) {
+  if (value === "" || value === null || value === undefined) return defaultSamplingIntervalSeconds;
+
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return defaultSamplingIntervalSeconds;
+
+  return Math.min(
+    maxSamplingIntervalSeconds,
+    Math.max(minSamplingIntervalSeconds, Math.round(numericValue))
+  );
+}
 
 function distanceMeters(a, b) {
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
@@ -139,5 +154,13 @@ function isFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-module.exports = { distanceMeters, shouldAppendTrackPoint, simplifyTrackPoints };
+module.exports = {
+  defaultSamplingIntervalSeconds,
+  maxSamplingIntervalSeconds,
+  minSamplingIntervalSeconds,
+  normalizeSamplingIntervalSeconds,
+  distanceMeters,
+  shouldAppendTrackPoint,
+  simplifyTrackPoints
+};
 

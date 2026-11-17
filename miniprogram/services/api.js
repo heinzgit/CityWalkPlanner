@@ -1,4 +1,4 @@
-const API_BASE_URLS = ["http://192.168.31.114:43101", "http://127.0.0.1:43101", "http://localhost:43101"];
+const API_BASE_URLS = ["http://192.168.0.102:43101", "http://127.0.0.1:43101", "http://localhost:43101"];
 const TOKEN_STORAGE_KEY = "citywalk_session_token";
 
 function getToken() {
@@ -63,6 +63,11 @@ const api = {
   createRouteFromWalk: (payload) =>
     request("/api/routes/from-walk", {
       method: "POST",
+      data: payload
+    }),
+  updateRoute: (id, payload) =>
+    request(`/api/routes/${id}`, {
+      method: "PATCH",
       data: payload
     })
 };

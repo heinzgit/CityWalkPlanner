@@ -13,10 +13,31 @@ function loadTrackUtils() {
   return sandbox.module.exports;
 }
 
-const { distanceMeters, shouldAppendTrackPoint, simplifyTrackPoints } = loadTrackUtils();
+function loadRouteCompletionUtils() {
+  const filename = path.resolve(__dirname, "../miniprogram/utils/routeCompletion.js");
+  const source = fs.readFileSync(filename, "utf8");
+  const sandbox = { module: { exports: {} } };
+  sandbox.exports = sandbox.module.exports;
+  vm.runInNewContext(source, sandbox, { filename });
+  return sandbox.module.exports;
+}
+
+const {
+  distanceMeters,
+  normalizeSamplingIntervalSeconds,
+  shouldAppendTrackPoint,
+  simplifyTrackPoints
+} = loadTrackUtils();
+const {
+  WALKING_ROUTE_COLOR,
+  VEHICLE_ROUTE_COLOR,
+  completionDateFromRouteName,
+  routeDistanceMeters,
+  travelModeFromRouteColor
+} = loadRouteCompletionUtils();
 const metersToLatitude = (meters) => meters / 111320;
 
-function loadMapPage() {
+function loadMapPage(apiMock = {}) {
   const filename = path.resolve(__dirname, "../miniprogram/pages/map/index.js");
   const source = fs.readFileSync(filename, "utf8");
   let definition;
@@ -29,7 +50,8 @@ function loadMapPage() {
     setTimeout,
     wx: {},
     require: (request) => {
-      if (request === "../../utils/track") return { distanceMeters, shouldAppendTrackPoint, simplifyTrackPoints };
+      if (request === "../../utils/track") return loadTrackUtils();
+      if (request === "../../utils/routeCompletion") return loadRouteCompletionUtils();
       if (request === "../../utils/coord") {
         return {
           bd09ToGcj02: (value) => value,
@@ -37,7 +59,7 @@ function loadMapPage() {
           toMapPoint: (value) => ({ longitude: value.lng, latitude: value.lat })
         };
       }
-      if (request === "../../services/api") return { api: {} };
+      if (request === "../../services/api") return { api: apiMock };
       if (request === "../../services/localWalks") return {};
       if (request === "../../services/serverRouteCache") return {};
       throw new Error(`Unexpected module: ${request}`);
@@ -47,8 +69,8 @@ function loadMapPage() {
   return definition;
 }
 
-function createMapPage() {
-  const definition = loadMapPage();
+function createMapPage(apiMock = {}) {
+  const definition = loadMapPage(apiMock);
   const updates = [];
   return {
     page: {
@@ -91,6 +113,34 @@ test("track filter enforces the minimum time interval", () => {
 
   assert.equal(shouldAppendTrackPoint([previous], tooSoon), false);
   assert.equal(shouldAppendTrackPoint([previous], afterInterval), true);
+});
+
+test("sampling interval input is rounded and constrained to the supported range", () => {
+  assert.equal(normalizeSamplingIntervalSeconds(""), 20);
+  assert.equal(normalizeSamplingIntervalSeconds("5.6"), 6);
+  assert.equal(normalizeSamplingIntervalSeconds(0), 1);
+  assert.equal(normalizeSamplingIntervalSeconds(500), 300);
+  assert.equal(normalizeSamplingIntervalSeconds("not-a-number"), 20);
+});
+
+test("route completion derives mode, date, and distance for local walks", () => {
+  assert.equal(travelModeFromRouteColor(WALKING_ROUTE_COLOR), "walking");
+  assert.equal(travelModeFromRouteColor(VEHICLE_ROUTE_COLOR), "vehicle");
+  assert.equal(travelModeFromRouteColor("#unknown"), "walking");
+  assert.equal(completionDateFromRouteName("2026/11/17 08:30-09:20", "2026-01-01"), "2026-11-17");
+  assert.equal(completionDateFromRouteName("11-17 08:30", "2026-01-01"), "2026-11-17");
+  assert.equal(completionDateFromRouteName("没有日期", "2026-01-01"), "2026-01-01");
+
+  const route = [point(0), point(100)];
+  assert.ok(Math.abs(routeDistanceMeters(route) - 100) <= 2);
+});
+
+test("track filter accepts a manually configured minimum interval", () => {
+  const previous = point(0);
+  const afterSixSeconds = point(20, { capturedAt: new Date(1700000006000).toISOString() });
+
+  assert.equal(shouldAppendTrackPoint([previous], afterSixSeconds), false);
+  assert.equal(shouldAppendTrackPoint([previous], afterSixSeconds, { minIntervalMs: 5000 }), true);
 });
 
 test("track filter suppresses stationary drift while retaining walking movement", () => {
@@ -156,6 +206,70 @@ test("background location events only update the in-memory buffers", () => {
   assert.equal(page.trackPoints.length, 2);
   assert.equal(page.previewTrackPoints.length, 2);
   assert.equal(updates.length, 0);
+});
+
+test("map recording applies the interval selected for the current walk", () => {
+  const { page } = createMapPage();
+  const previous = point(0, { capturedAt: new Date(Date.now() - 6000).toISOString() });
+  page.trackPoints = [previous];
+  page.previewTrackPoints = [previous];
+  page.recordingSamplingIntervalMs = 5000;
+  page.trackRenderTimer = null;
+  page.isPageVisible = false;
+
+  page.handleLocationChange({
+    longitude: point(10).lng,
+    latitude: point(10).lat,
+    accuracy: 10,
+    speed: 1.2
+  });
+
+  assert.equal(page.trackPoints.length, 2);
+});
+
+test("local display routes preserve the walk color and fall back for legacy drafts", () => {
+  const { page } = createMapPage();
+  const displayRoutes = page.buildDisplayRoutes([], [
+    { id: "walk", name: "走路", points: [], color: WALKING_ROUTE_COLOR, travelMode: "walking" },
+    { id: "legacy", name: "旧路线", points: [] }
+  ]);
+
+  assert.equal(displayRoutes[0].color, WALKING_ROUTE_COLOR);
+  assert.equal(displayRoutes[0].travelMode, "walking");
+  assert.equal(displayRoutes[1].color, WALKING_ROUTE_COLOR);
+  assert.equal(displayRoutes[1].travelMode, "walking");
+});
+
+test("local sync patches completion fields when an older create endpoint ignores them", async () => {
+  const requests = [];
+  const apiMock = {
+    createRouteFromWalk(payload) {
+      requests.push({ method: "create", payload });
+      return Promise.resolve({ id: "route-1", completedOn: null, distanceMeters: null, travelMode: null });
+    },
+    updateRoute(id, payload) {
+      requests.push({ method: "update", id, payload });
+      return Promise.resolve({ id, ...payload });
+    }
+  };
+  const { page } = createMapPage(apiMock);
+
+  const route = await page.uploadLocalWalk({
+    name: "2026/11/17 08:30-09:20",
+    description: null,
+    color: VEHICLE_ROUTE_COLOR,
+    travelMode: "vehicle",
+    points: [point(0), point(100)]
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].payload.completedOn, "2026-11-17");
+  assert.equal(requests[0].payload.travelMode, "vehicle");
+  assert.equal(requests[1].method, "update");
+  assert.equal(requests[1].id, "route-1");
+  assert.equal(requests[1].payload.completedOn, "2026-11-17");
+  assert.equal(requests[1].payload.travelMode, "vehicle");
+  assert.equal(route.completedOn, "2026-11-17");
 });
 
 test("foreground preview updates only the live polyline after initialization", () => {

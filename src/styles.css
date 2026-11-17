@@ -1263,7 +1263,7 @@ button {
 }
 
 .daily-chart-legend span.vehicle::before {
-  background: #d77a26;
+  background: #2f54eb;
 }
 
 .daily-chart-scroll {
@@ -1368,7 +1368,7 @@ button {
 }
 
 .daily-chart-bar.vehicle {
-  background: #d77a26;
+  background: #2f54eb;
 }
 
 .daily-chart-bar:hover {

@@ -15,20 +15,88 @@
   right: 24rpx;
   bottom: 36rpx;
   display: flex;
-  gap: 16rpx;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.toolbar-actions {
+  position: relative;
+  min-height: 168rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.record-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28rpx;
+}
+
+.sampling-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 14rpx 18rpx;
+  border: 1rpx solid #d7e0eb;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8rpx 24rpx rgba(27, 39, 55, 0.08);
+}
+
+.sampling-settings-title {
+  color: #1b3558;
+  font-size: 25rpx;
+  font-weight: 800;
+}
+
+.sampling-settings-hint {
+  margin-top: 2rpx;
+  color: #637083;
+  font-size: 20rpx;
+}
+
+.sampling-input-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 12rpx;
+  border: 1rpx solid #b9c9dc;
+  border-radius: 10rpx;
+  color: #1b3558;
+  font-size: 24rpx;
+}
+
+.sampling-input-wrap.disabled {
+  background: #eef2f6;
+  color: #7b8795;
+}
+
+.sampling-input {
+  width: 92rpx;
+  height: 44rpx;
+  color: #17202a;
+  font-size: 27rpx;
+  font-weight: 800;
+  text-align: right;
 }
 
 .location-button {
-  width: 72rpx;
-  height: 72rpx;
-  flex: 0 0 72rpx;
+  position: absolute;
+  left: 0;
+  width: 116rpx;
+  height: 116rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   border: 1rpx solid #d7e0eb;
-  border-radius: 12rpx;
+  border-radius: 50%;
   background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8rpx 24rpx rgba(27, 39, 55, 0.12);
   color: #1b3558;
 }
 
@@ -41,25 +109,55 @@
 }
 
 .location-icon {
-  font-size: 42rpx;
+  font-size: 64rpx;
   font-weight: 700;
   line-height: 1;
 }
 
 .tool-button {
-  flex: 1;
-  min-height: 72rpx;
+  width: 160rpx;
+  height: 160rpx;
+  min-height: 160rpx;
+  flex: 0 0 160rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 1rpx solid #d7e0eb;
-  border-radius: 12rpx;
+  border-radius: 50%;
   background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10rpx 28rpx rgba(27, 39, 55, 0.18);
   color: #1b3558;
-  font-size: 28rpx;
+  font-size: 27rpx;
   font-weight: 700;
+  line-height: 1.2;
+}
+
+.tool-button::after {
+  border: 0;
+}
+
+.tool-button-label {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
 }
 
 .tool-button.primary {
   border-color: #1167d8;
   background: #1167d8;
+  color: #ffffff;
+}
+
+.tool-button.walking {
+  border-color: #19a974;
+  background: #19a974;
+  color: #ffffff;
+}
+
+.tool-button.vehicle {
+  border-color: #2f54eb;
+  background: #2f54eb;
   color: #ffffff;
 }
 

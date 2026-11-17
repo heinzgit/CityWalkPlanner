@@ -28,6 +28,8 @@ function saveLocalWalk(input) {
     name: input.name,
     description: input.description || null,
     points: input.points,
+    color: input.color || "#19a974",
+    travelMode: input.travelMode || "walking",
     createdAt: now,
     updatedAt: now,
     syncStatus: "pending",

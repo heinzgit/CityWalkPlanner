@@ -43,6 +43,26 @@ function formatBarKilometers(meters: number) {
   return (meters / 1000).toFixed(2);
 }
 
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function currentWeekDateRange() {
+  const today = new Date();
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  return {
+    from: formatDateInput(monday),
+    to: formatDateInput(sunday)
+  };
+}
+
 export function TravelStats({
   currentUser,
   onShowMap,
@@ -52,8 +72,9 @@ export function TravelStats({
   onShowMap: () => void;
   onLogout: () => void;
 }) {
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [initialDateRange] = useState(currentWeekDateRange);
+  const [from, setFrom] = useState(initialDateRange.from);
+  const [to, setTo] = useState(initialDateRange.to);
   const [travelMode, setTravelMode] = useState<TravelMode | "all">("all");
   const [stats, setStats] = useState<TravelStatsPayload>(emptyStats);
   const [isLoading, setIsLoading] = useState(true);

@@ -6,18 +6,32 @@ const {
   writeServerRouteCache
 } = require("../../services/serverRouteCache");
 const { bd09ToGcj02, gcj02ToBd09, toMapPoint } = require("../../utils/coord");
-const { shouldAppendTrackPoint, simplifyTrackPoints } = require("../../utils/track");
+const {
+  WALKING_ROUTE_COLOR,
+  completionDateFromRouteName,
+  routeColorForTravelMode,
+  routeDistanceMeters,
+  travelModeFromRouteColor
+} = require("../../utils/routeCompletion");
+const {
+  defaultSamplingIntervalSeconds,
+  maxSamplingIntervalSeconds,
+  minSamplingIntervalSeconds,
+  normalizeSamplingIntervalSeconds,
+  shouldAppendTrackPoint,
+  simplifyTrackPoints
+} = require("../../utils/track");
 
 const shanghai = {
   longitude: 121.4737,
   latitude: 31.2304
 };
 
-const localRouteColor = "#0f766e";
 const localFolderId = "__local_walks__";
 const trackRenderIntervalMs = 1000;
 const previewPointLimit = 600;
 const previewTargetPointCount = 400;
+const samplingIntervalStorageKey = "citywalk.samplingIntervalSeconds.v1";
 
 Page({
   data: {
@@ -33,6 +47,10 @@ Page({
     shouldShowLocation: false,
     isRecording: false,
     locationMode: "",
+    recordingTravelMode: "",
+    samplingIntervalSeconds: defaultSamplingIntervalSeconds,
+    samplingIntervalInput: `${defaultSamplingIntervalSeconds}`,
+    samplingIntervalRange: `${minSamplingIntervalSeconds}–${maxSamplingIntervalSeconds} 秒`,
     isSavingWalk: false,
     isRoutePanelVisible: false,
     isWalkDialogVisible: false,
@@ -54,7 +72,10 @@ Page({
     this.routePolylines = [];
     this.trackRenderTimer = null;
     this.lastTrackRenderAt = 0;
+    this.recordingSamplingIntervalMs = defaultSamplingIntervalSeconds * 1000;
+    this.recordingRouteColor = WALKING_ROUTE_COLOR;
     this.isPageVisible = true;
+    this.restoreSamplingInterval();
     this.loadLocalWalks();
     this.loadCachedServerRoutes();
     this.checkAuth();
@@ -192,16 +213,20 @@ Page({
       pointSystem: "bd09"
     }));
 
-    const localRoutes = localWalks.map((walk) => ({
-      id: walk.id,
-      sourceType: "local",
-      pointSystem: "gcj02",
-      name: walk.name,
-      description: walk.description,
-      color: localRouteColor,
-      points: walk.points || [],
-      syncStatus: walk.syncStatus
-    }));
+    const localRoutes = localWalks.map((walk) => {
+      const travelMode = travelModeFromRouteColor(walk.color, walk.travelMode || "walking");
+      return {
+        id: walk.id,
+        sourceType: "local",
+        pointSystem: "gcj02",
+        name: walk.name,
+        description: walk.description,
+        color: routeColorForTravelMode(travelMode),
+        points: walk.points || [],
+        syncStatus: walk.syncStatus,
+        travelMode
+      };
+    });
 
     return [...serverRoutes, ...localRoutes];
   },
@@ -412,7 +437,7 @@ Page({
       this.previewTrackPoints.length > 1
         ? {
             points: this.previewTrackPoints.map(toMapPoint),
-            color: "#f59e0b",
+            color: this.recordingRouteColor || WALKING_ROUTE_COLOR,
             width: 8,
             dottedLine: false,
             arrowLine: true
@@ -517,8 +542,63 @@ Page({
     return [date, timeRange].filter(Boolean).join(" ");
   },
 
-  startRecording() {
+  restoreSamplingInterval() {
+    let storedValue = defaultSamplingIntervalSeconds;
+
+    try {
+      storedValue = wx.getStorageSync(samplingIntervalStorageKey);
+    } catch (error) {
+      console.warn("[map] read sampling interval failed", error);
+    }
+
+    const samplingIntervalSeconds = normalizeSamplingIntervalSeconds(storedValue);
+    this.setData({
+      samplingIntervalSeconds,
+      samplingIntervalInput: `${samplingIntervalSeconds}`
+    });
+  },
+
+  updateSamplingIntervalInput(event) {
+    this.setData({ samplingIntervalInput: event.detail.value });
+  },
+
+  commitSamplingInterval(showFeedback = true) {
+    const rawValue = this.data.samplingIntervalInput;
+    const samplingIntervalSeconds = normalizeSamplingIntervalSeconds(rawValue);
+
+    this.setData({
+      samplingIntervalSeconds,
+      samplingIntervalInput: `${samplingIntervalSeconds}`
+    });
+
+    try {
+      wx.setStorageSync(samplingIntervalStorageKey, samplingIntervalSeconds);
+    } catch (error) {
+      console.warn("[map] save sampling interval failed", error);
+    }
+
+    if (showFeedback && `${rawValue}` !== `${samplingIntervalSeconds}`) {
+      wx.showToast({ title: `已调整为 ${samplingIntervalSeconds} 秒`, icon: "none" });
+    }
+
+    return samplingIntervalSeconds;
+  },
+
+  finishSamplingIntervalEdit() {
+    this.commitSamplingInterval();
+  },
+
+  startRecording(eventOrTravelMode = "walking") {
+    const requestedTravelMode =
+      typeof eventOrTravelMode === "string"
+        ? eventOrTravelMode
+        : eventOrTravelMode?.currentTarget?.dataset?.travelMode;
+    const travelMode = requestedTravelMode === "vehicle" ? "vehicle" : "walking";
     const startedAt = new Date().toISOString();
+    const samplingIntervalSeconds = this.commitSamplingInterval(false);
+    this.recordingSamplingIntervalMs = samplingIntervalSeconds * 1000;
+    this.recordingTravelMode = travelMode === "vehicle" ? "vehicle" : "walking";
+    this.recordingRouteColor = routeColorForTravelMode(this.recordingTravelMode);
 
     const startForegroundLocation = () => {
       wx.startLocationUpdate({
@@ -530,6 +610,7 @@ Page({
             {
               isRecording: true,
               locationMode: "foreground",
+              recordingTravelMode: this.recordingTravelMode,
               shouldShowLocation: true,
               walkStartedAt: startedAt,
               walkEndedAt: ""
@@ -564,6 +645,7 @@ Page({
           {
             isRecording: true,
             locationMode: "background",
+            recordingTravelMode: this.recordingTravelMode,
             shouldShowLocation: true,
             walkStartedAt: startedAt,
             walkEndedAt: ""
@@ -588,7 +670,7 @@ Page({
     wx.offLocationChange(this.handleLocationChange);
     wx.stopLocationUpdate();
     this.clearTrackRenderTimer();
-    this.setData({ isRecording: false, locationMode: "", walkEndedAt: endedAt }, () => this.renderTrackPreview());
+    this.setData({ isRecording: false, locationMode: "", recordingTravelMode: "", walkEndedAt: endedAt }, () => this.renderTrackPreview());
 
     if (this.trackPoints.length < 2) {
       wx.showToast({ title: "轨迹点太少", icon: "none" });
@@ -643,7 +725,9 @@ Page({
       const savedWalk = saveLocalWalk({
         name,
         description: description || null,
-        points: this.trackPoints
+        points: this.trackPoints,
+        color: this.recordingRouteColor || WALKING_ROUTE_COLOR,
+        travelMode: this.recordingTravelMode || "walking"
       });
 
       wx.showToast({ title: "已保存到本地", icon: "success" });
@@ -701,10 +785,37 @@ Page({
 
   uploadLocalWalk(walk) {
     const points = walk.points.map((point) => gcj02ToBd09(point));
+    const travelMode = travelModeFromRouteColor(walk.color, walk.travelMode || "walking");
+    const color = routeColorForTravelMode(travelMode);
+    const completion = {
+      color,
+      completedOn: completionDateFromRouteName(walk.name),
+      distanceMeters: routeDistanceMeters(walk.points),
+      travelMode
+    };
+
+    const isCompletedRoute = (route) =>
+      Boolean(route?.completedOn && route?.distanceMeters && route?.travelMode);
+
     return api.createRouteFromWalk({
       name: walk.name,
       description: walk.description || null,
-      points
+      ...completion,
+      points,
+    }).then((route) => {
+      // 兼容仍在运行旧版服务端的部署：旧版会忽略新增完成字段，
+      // 但已有 PATCH 路线接口可以补齐这些字段。
+      if (isCompletedRoute(route)) return route;
+      if (!route?.id || typeof api.updateRoute !== "function") {
+        throw new Error("服务端未保存路线完成信息");
+      }
+
+      return api.updateRoute(route.id, completion).then((updatedRoute) => {
+        if (!isCompletedRoute(updatedRoute)) {
+          throw new Error("服务端未保存路线完成信息，请更新并重启服务端");
+        }
+        return updatedRoute;
+      });
     });
   },
 
@@ -758,7 +869,15 @@ Page({
       capturedAt: new Date().toISOString()
     };
 
-    if (!shouldAppendTrackPoint(this.trackPoints, nextPoint)) return;
+    if (
+      !shouldAppendTrackPoint(this.trackPoints, nextPoint, {
+        minIntervalMs:
+          this.recordingSamplingIntervalMs ||
+          normalizeSamplingIntervalSeconds(this.data.samplingIntervalSeconds) * 1000
+      })
+    ) {
+      return;
+    }
 
     this.trackPoints.push(nextPoint);
     this.previewTrackPoints.push(nextPoint);

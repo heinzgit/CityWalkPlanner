@@ -11,16 +11,44 @@
   />
 
   <view class="toolbar">
-    <button
-      class="location-button"
-      aria-label="定位到当前位置"
-      hover-class="location-button-active"
-      bindtap="focusCurrentLocation"
-    >
-      <text class="location-icon">⌖</text>
-    </button>
-    <button class="tool-button primary" wx:if="{{!isRecording}}" bindtap="startRecording">开始记录</button>
-    <button class="tool-button warning" wx:if="{{isRecording}}" bindtap="stopRecording">结束记录</button>
+    <view class="sampling-settings">
+      <view>
+        <view class="sampling-settings-title">最短采样间隔</view>
+        <view class="sampling-settings-hint">范围 {{samplingIntervalRange}}，开始记录后锁定</view>
+      </view>
+      <view class="sampling-input-wrap {{isRecording ? 'disabled' : ''}}">
+        <input
+          class="sampling-input"
+          type="number"
+          value="{{samplingIntervalInput}}"
+          disabled="{{isRecording}}"
+          bindinput="updateSamplingIntervalInput"
+          bindblur="finishSamplingIntervalEdit"
+        />
+        <text>秒</text>
+      </view>
+    </view>
+    <view class="toolbar-actions">
+      <button
+        class="location-button"
+        aria-label="定位到当前位置"
+        hover-class="location-button-active"
+        bindtap="focusCurrentLocation"
+      >
+        <text class="location-icon">⌖</text>
+      </button>
+      <view class="record-actions">
+        <button class="tool-button walking" wx:if="{{!isRecording}}" data-travel-mode="walking" bindtap="startRecording">
+          <view class="tool-button-label"><text>开始</text><text>走路</text></view>
+        </button>
+        <button class="tool-button vehicle" wx:if="{{!isRecording}}" data-travel-mode="vehicle" bindtap="startRecording">
+          <view class="tool-button-label"><text>开始</text><text>乘车</text></view>
+        </button>
+        <button class="tool-button warning" wx:if="{{isRecording}}" bindtap="stopRecording">
+          <view class="tool-button-label"><text>结束</text><text>记录</text></view>
+        </button>
+      </view>
+    </view>
   </view>
 
   <button class="route-panel-tab" wx:if="{{!isRoutePanelVisible}}" bindtap="openRoutePanel">路线列表</button>
