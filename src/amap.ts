@@ -97,6 +97,7 @@ declare global {
       position: LngLatLike;
       draggable?: boolean;
       icon?: Icon;
+      content?: string | HTMLElement;
       anchor?: "top-left" | "top-center" | "top-right" | "middle-left" | "center" | "middle-right" | "bottom-left" | "bottom-center" | "bottom-right";
       zIndex?: number;
     };

@@ -77,6 +77,43 @@ type RouteMode = "view" | "edit";
 type MapTypeMode = "normal" | "satellite";
 type RouteDisplayMode = "walking" | "transit" | "all";
 type MapLayers = { normal: AMap.Layer; satellite: AMap.Layer; roadNet: AMap.Layer };
+type RouteEndpointRole = "start" | "end" | "both";
+
+function getRouteEndpointRole(index: number, pointCount: number): RouteEndpointRole | null {
+  if (pointCount === 1 && index === 0) return "both";
+  if (index === 0) return "start";
+  if (index === pointCount - 1) return "end";
+  return null;
+}
+
+function createRouteEndpointContent(
+  role: RouteEndpointRole,
+  routeName: string,
+  isCurrentPoint: boolean,
+  canEdit: boolean
+) {
+  const marker = document.createElement("div");
+  marker.className = [
+    "route-endpoint-marker",
+    `route-endpoint-${role}`,
+    isCurrentPoint ? "is-current" : "",
+    canEdit ? "is-editable" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const dot = document.createElement("span");
+  dot.className = "route-endpoint-dot";
+  marker.appendChild(dot);
+
+  const label = document.createElement("span");
+  label.className = "route-endpoint-label";
+  label.textContent =
+    role === "start" ? `起点 - ${routeName}` : role === "end" ? "终点" : `起点 / 终点 - ${routeName}`;
+  label.title = label.textContent;
+  marker.appendChild(label);
+  return marker;
+}
 
 function isRouteShownInDisplayMode(route: RoutePlan, displayMode: RouteDisplayMode) {
   if (displayMode === "walking") return route.travelMode === "walking";
@@ -1026,7 +1063,8 @@ export function App() {
             setRouteMode("view");
           }
         });
-        const canEditMarkers = route.id === selectedRouteId && routeMode === "edit";
+        const isSelectedRoute = route.id === selectedRouteId;
+        const canEditMarkers = isSelectedRoute && routeMode === "edit";
         const pointIcon = new AMapApi.Icon({
           image: editPointIcon,
           size: new AMapApi.Size(14, 14),
@@ -1037,16 +1075,27 @@ export function App() {
           size: new AMapApi.Size(18, 18),
           imageSize: new AMapApi.Size(18, 18)
         });
-        const markers = canEditMarkers ? points.map((point, index) => {
+        const markerIndexes = canEditMarkers
+          ? points.map((_point, index) => index)
+          : isSelectedRoute
+            ? points.length === 1
+              ? [0]
+              : [0, points.length - 1]
+            : [];
+        const markers = markerIndexes.map((index) => {
+          const point = points[index];
+          const endpointRole = getRouteEndpointRole(index, points.length);
           const isCurrentPoint = canEditMarkers && index === selectedPointIndex;
           const marker = new AMapApi.Marker({
             position: point,
             draggable: isCurrentPoint,
-            icon: isCurrentPoint ? yellowIcon : pointIcon,
+            ...(endpointRole
+              ? { content: createRouteEndpointContent(endpointRole, route.name, isCurrentPoint, canEditMarkers) }
+              : { icon: isCurrentPoint ? yellowIcon : pointIcon }),
             anchor: "center",
-            zIndex: isCurrentPoint ? 40 : 30
+            zIndex: isCurrentPoint ? 50 : endpointRole ? 40 : 30
           });
-          if (isCurrentPoint) {
+          if (isCurrentPoint && !endpointRole) {
             marker.setIcon(yellowIcon);
           }
           if (canEditMarkers) {
@@ -1074,7 +1123,7 @@ export function App() {
             });
           }
           return marker;
-        }) : [];
+        });
         map.add([polyline, ...markers]);
         overlaysRef.current.set(route.id, { polyline, markers });
       });

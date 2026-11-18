@@ -392,6 +392,63 @@ button {
   cursor: ew-resize !important;
 }
 
+.route-endpoint-marker {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  user-select: none;
+}
+
+.route-endpoint-marker.is-editable {
+  cursor: pointer;
+}
+
+.route-endpoint-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: #e11919;
+  box-shadow: 0 2px 8px rgba(75, 8, 8, 0.5), 0 0 0 2px rgba(177, 16, 16, 0.55);
+  transform: translate(-50%, -50%);
+}
+
+.route-endpoint-marker.is-current .route-endpoint-dot {
+  box-shadow: 0 0 0 4px rgba(246, 195, 67, 0.92), 0 2px 9px rgba(75, 8, 8, 0.58);
+}
+
+.route-endpoint-label {
+  position: absolute;
+  left: 50%;
+  max-width: 220px;
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 4px;
+  background: #c9161d;
+  box-shadow: 0 2px 7px rgba(52, 8, 10, 0.35);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.route-endpoint-start .route-endpoint-label,
+.route-endpoint-both .route-endpoint-label {
+  bottom: calc(100% + 4px);
+}
+
+.route-endpoint-end .route-endpoint-label {
+  top: calc(100% + 4px);
+}
+
 .panel-tab {
   position: absolute;
   top: 14px;
