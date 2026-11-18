@@ -22,6 +22,21 @@ function loadRouteCompletionUtils() {
   return sandbox.module.exports;
 }
 
+function loadApiService(wxMock) {
+  const filename = path.resolve(__dirname, "../miniprogram/services/api.js");
+  const source = fs.readFileSync(filename, "utf8");
+  const sandbox = {
+    Promise,
+    Set,
+    console,
+    module: { exports: {} },
+    wx: wxMock
+  };
+  sandbox.exports = sandbox.module.exports;
+  vm.runInNewContext(source, sandbox, { filename });
+  return sandbox.module.exports;
+}
+
 const {
   distanceMeters,
   normalizeSamplingIntervalSeconds,
@@ -59,9 +74,22 @@ function loadMapPage(apiMock = {}) {
           toMapPoint: (value) => ({ longitude: value.lng, latitude: value.lat })
         };
       }
-      if (request === "../../services/api") return { api: apiMock };
+      if (request === "../../services/api") {
+        return {
+          api: apiMock,
+          getServerIp: () => "192.168.0.102",
+          isValidServerIp: (value) => {
+            const parts = String(value || "").trim().split(".");
+            return (
+              parts.length === 4 &&
+              parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) >= 0 && Number(part) <= 255)
+            );
+          },
+          setServerIp: (value) => value
+        };
+      }
       if (request === "../../services/localWalks") return {};
-      if (request === "../../services/serverRouteCache") return {};
+      if (request === "../../services/serverRouteCache") return { clearServerRouteCache: () => {} };
       throw new Error(`Unexpected module: ${request}`);
     }
   };
@@ -121,6 +149,44 @@ test("sampling interval input is rounded and constrained to the supported range"
   assert.equal(normalizeSamplingIntervalSeconds(0), 1);
   assert.equal(normalizeSamplingIntervalSeconds(500), 300);
   assert.equal(normalizeSamplingIntervalSeconds("not-a-number"), 20);
+});
+
+test("server IP setting is validated and retained without clearing the login token", async () => {
+  const storage = new Map([
+    ["citywalk_session_token", "existing-login-token"]
+  ]);
+  const requests = [];
+  const wxMock = {
+    getStorageSync(key) {
+      return storage.get(key);
+    },
+    setStorageSync(key, value) {
+      storage.set(key, value);
+    },
+    removeStorageSync(key) {
+      storage.delete(key);
+    },
+    request(options) {
+      requests.push(options);
+      options.success({ statusCode: 200, data: { folders: [], routes: [] } });
+    }
+  };
+  const { api, getServerIp, getToken, isValidServerIp, setServerIp } = loadApiService(wxMock);
+
+  assert.equal(isValidServerIp("192.168.1.20"), true);
+  assert.equal(isValidServerIp("256.168.1.20"), false);
+  assert.equal(isValidServerIp("192.168.1"), false);
+  assert.equal(isValidServerIp("http://192.168.1.20"), false);
+
+  setServerIp("10.0.0.8");
+  assert.equal(getServerIp(), "10.0.0.8");
+  assert.equal(getToken(), "existing-login-token");
+  assert.equal(storage.get("citywalk_session_token"), "existing-login-token");
+
+  await api.getTree();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "http://10.0.0.8:43101/api/tree");
+  assert.equal(requests[0].header.Authorization, "Bearer existing-login-token");
 });
 
 test("route completion derives mode, date, and distance for local walks", () => {

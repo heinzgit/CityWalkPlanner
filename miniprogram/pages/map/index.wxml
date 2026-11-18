@@ -17,6 +17,10 @@
     {{showLocalRoutesOnly ? '显示全部路线' : '只显示本地路线'}}
   </button>
 
+  <button class="server-settings-button" bindtap="openServerSettings">
+    服务器
+  </button>
+
   <view class="toolbar">
     <view class="sampling-settings">
       <view>
@@ -145,6 +149,25 @@
         <button class="dialog-button primary" loading="{{isSavingWalk}}" disabled="{{isSavingWalk}}" bindtap="confirmWalkSave">
           保存到本地
         </button>
+      </view>
+    </view>
+  </view>
+
+  <view class="dialog-mask" wx:if="{{isServerDialogVisible}}">
+    <view class="dialog">
+      <view class="dialog-title">设置服务器 IP</view>
+      <view class="server-dialog-current">当前服务器：{{serverIp}}:43101</view>
+      <input
+        class="dialog-input"
+        value="{{serverIpInput}}"
+        maxlength="15"
+        placeholder="例如 192.168.0.102"
+        bindinput="updateServerIpInput"
+      />
+      <view class="server-dialog-hint">请输入 IPv4 地址，端口固定为 43101。</view>
+      <view class="dialog-actions">
+        <button class="dialog-button" bindtap="closeServerSettings">取消</button>
+        <button class="dialog-button primary" bindtap="confirmServerSettings">保存并连接</button>
       </view>
     </view>
   </view>

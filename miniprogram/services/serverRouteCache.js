@@ -79,11 +79,29 @@ function writeServerRouteCache(payload) {
   return cache;
 }
 
+function clearServerRouteCache() {
+  const filePath = getCacheFilePath();
+  if (filePath) {
+    try {
+      wx.getFileSystemManager().unlinkSync(filePath);
+    } catch (error) {
+      // 缓存文件不存在时无需处理。
+    }
+  }
+
+  try {
+    wx.removeStorageSync(STORAGE_KEY);
+  } catch (error) {
+    console.warn("[serverRouteCache] clear failed", error);
+  }
+}
+
 function hasCachedServerRoutes(cache = readServerRouteCache()) {
   return cache.routes.length > 0;
 }
 
 module.exports = {
+  clearServerRouteCache,
   hasCachedServerRoutes,
   readServerRouteCache,
   writeServerRouteCache

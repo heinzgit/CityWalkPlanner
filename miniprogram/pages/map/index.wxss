@@ -43,6 +43,28 @@
   opacity: 0.84;
 }
 
+.server-settings-button {
+  position: absolute;
+  top: 32rpx;
+  right: 24rpx;
+  z-index: 9;
+  min-width: 128rpx;
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  border: 1rpx solid #b9c9dc;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8rpx 24rpx rgba(27, 39, 55, 0.14);
+  color: #1b3558;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 64rpx;
+}
+
+.server-settings-button::after {
+  border: 0;
+}
+
 .toolbar {
   position: absolute;
   left: 24rpx;
@@ -488,6 +510,18 @@
   color: #17202a;
   font-size: 32rpx;
   font-weight: 800;
+}
+
+.server-dialog-current {
+  margin: -8rpx 0 18rpx;
+  color: #52667c;
+  font-size: 24rpx;
+}
+
+.server-dialog-hint {
+  margin-top: 12rpx;
+  color: #7a8798;
+  font-size: 22rpx;
 }
 
 .dialog-input,

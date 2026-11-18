@@ -1,6 +1,7 @@
-const { api } = require("../../services/api");
+const { api, getServerIp, isValidServerIp, setServerIp } = require("../../services/api");
 const { deleteLocalWalk, listLocalWalks, saveLocalWalk, updateLocalWalk } = require("../../services/localWalks");
 const {
+  clearServerRouteCache,
   hasCachedServerRoutes,
   readServerRouteCache,
   writeServerRouteCache
@@ -55,6 +56,9 @@ Page({
     isSavingWalk: false,
     isRoutePanelVisible: false,
     isWalkDialogVisible: false,
+    isServerDialogVisible: false,
+    serverIp: "",
+    serverIpInput: "",
     walkName: "",
     walkDescription: "",
     walkStartedAt: "",
@@ -76,6 +80,8 @@ Page({
     this.recordingSamplingIntervalMs = defaultSamplingIntervalSeconds * 1000;
     this.recordingRouteColor = WALKING_ROUTE_COLOR;
     this.isPageVisible = true;
+    const serverIp = getServerIp();
+    this.setData({ serverIp, serverIpInput: serverIp });
     this.restoreSamplingInterval();
     this.loadLocalWalks();
     this.loadCachedServerRoutes();
@@ -426,6 +432,52 @@ Page({
 
   closeRoutePanel() {
     this.setData({ isRoutePanelVisible: false });
+  },
+
+  openServerSettings() {
+    this.setData({
+      isServerDialogVisible: true,
+      serverIpInput: getServerIp()
+    });
+  },
+
+  closeServerSettings() {
+    this.setData({ isServerDialogVisible: false, serverIpInput: this.data.serverIp });
+  },
+
+  updateServerIpInput(event) {
+    this.setData({ serverIpInput: event.detail.value });
+  },
+
+  confirmServerSettings() {
+    const serverIp = String(this.data.serverIpInput || "").trim();
+    if (!isValidServerIp(serverIp)) {
+      wx.showToast({ title: "请输入有效的 IPv4 地址", icon: "none" });
+      return;
+    }
+
+    try {
+      setServerIp(serverIp);
+      clearServerRouteCache();
+      this.setData(
+        {
+          serverIp,
+          serverIpInput: serverIp,
+          isServerDialogVisible: false,
+          currentUser: null,
+          folders: [],
+          routes: []
+        },
+        () => {
+          this.loadLocalWalks({ preserveSelectedId: true });
+          this.checkAuth();
+        }
+      );
+      wx.showToast({ title: `服务器已切换为 ${serverIp}`, icon: "none" });
+    } catch (error) {
+      console.error("[map] save server IP failed", error);
+      wx.showToast({ title: "服务器地址保存失败", icon: "none" });
+    }
   },
 
   toggleLocalRoutesOnly() {
