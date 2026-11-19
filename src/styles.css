@@ -566,6 +566,11 @@ button {
   background: #f7fafd;
 }
 
+.map-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .map-toolbar .bulk-complete-button {
   border-color: #e5b85c;
   background: #fff8e8;

@@ -588,6 +588,7 @@ export function App() {
     const stored = window.localStorage.getItem(routeDisplayModeStorageKey);
     return stored === "walking" || stored === "transit" ? stored : "all";
   });
+  const [showOnlySelectedRoute, setShowOnlySelectedRoute] = useState(false);
   const [mapRotation, setMapRotation] = useState(() => {
     const stored = Number(window.localStorage.getItem(mapRotationStorageKey));
     return Number.isFinite(stored) ? normalizeMapRotation(stored) : 0;
@@ -640,6 +641,7 @@ export function App() {
     setSelectedRouteId(null);
     setExpandedFolderIds(new Set());
     setRouteMode("view");
+    setShowOnlySelectedRoute(false);
     setSelectedPointIndex(null);
     setDataStatus("请先登录");
     setIsMapReady(false);
@@ -673,6 +675,10 @@ export function App() {
   useEffect(() => {
     setColorDraft(selectedRoute?.color ?? "");
   }, [selectedRoute?.id, selectedRoute?.color]);
+
+  useEffect(() => {
+    if (!selectedRouteId) setShowOnlySelectedRoute(false);
+  }, [selectedRouteId]);
 
   useEffect(() => {
     if (!treeContextMenu) return;
@@ -1019,7 +1025,12 @@ export function App() {
 
     overlaysRef.current.forEach((bundle, routeId) => {
       const route = routes.find((item) => item.id === routeId);
-      if (!route || !route.isVisible || !isRouteShownInDisplayMode(route, routeDisplayMode)) {
+      if (
+        !route ||
+        !route.isVisible ||
+        !isRouteShownInDisplayMode(route, routeDisplayMode) ||
+        (showOnlySelectedRoute && route.id !== selectedRouteId)
+      ) {
         map.remove([bundle.polyline, ...bundle.markers]);
         overlaysRef.current.delete(routeId);
       }
@@ -1028,7 +1039,10 @@ export function App() {
     routes
       .filter(
         (route) =>
-          route.isVisible && route.points.length > 0 && isRouteShownInDisplayMode(route, routeDisplayMode)
+          route.isVisible &&
+          route.points.length > 0 &&
+          isRouteShownInDisplayMode(route, routeDisplayMode) &&
+          (!showOnlySelectedRoute || route.id === selectedRouteId)
       )
       .forEach((route) => {
         const existing = overlaysRef.current.get(route.id);
@@ -1133,6 +1147,7 @@ export function App() {
     selectedRouteId,
     routeMode,
     routeDisplayMode,
+    showOnlySelectedRoute,
     selectedPointIndex,
     isMapReady,
     updateRoutePoint,
@@ -1785,6 +1800,17 @@ export function App() {
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />
             聚焦路线
+          </button>
+          <button
+            type="button"
+            className={showOnlySelectedRoute ? "active" : ""}
+            aria-pressed={showOnlySelectedRoute}
+            disabled={!selectedRoute}
+            title={selectedRoute ? "切换是否只显示当前选中的路线" : "请先选择一条路线"}
+            onClick={() => setShowOnlySelectedRoute((current) => !current)}
+          >
+            <Eye size={16} />
+            只显示选中路线
           </button>
           <button
             className="bulk-complete-button"
