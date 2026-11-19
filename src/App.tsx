@@ -885,6 +885,7 @@ export function App() {
         const map = new AMapApi.Map(mapContainerRef.current, {
           center: [defaultCenter.lng, defaultCenter.lat],
           zoom: 13,
+          mapStyle: "amap://styles/normal",
           // Keep the existing top-down map while enabling AMap's rotation
           // gesture and setRotation API.
           viewMode: "2D",

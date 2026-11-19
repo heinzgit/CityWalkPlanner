@@ -73,6 +73,7 @@ declare global {
       pitchEnable?: boolean;
       resizeEnable?: boolean;
       showLabel?: boolean;
+      mapStyle?: string;
       layers?: Layer[];
     };
 
