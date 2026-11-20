@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
+  CalendarDays,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
+  ArrowRight,
   BarChart3,
-  CheckCheck,
   Copy,
   Edit3,
   Eye,
@@ -271,6 +273,12 @@ function currentLocalDate() {
   const now = new Date();
   const offsetDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
   return offsetDate.toISOString().slice(0, 10);
+}
+
+function shiftDate(dateText: string, dayOffset: number) {
+  const date = new Date(`${dateText}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + dayOffset);
+  return date.toISOString().slice(0, 10);
 }
 
 function completionDateFromRouteName(name: string) {
@@ -607,6 +615,7 @@ export function App() {
   const [showRouteDirectionArrows, setShowRouteDirectionArrows] = useState(false);
   const [activeView, setActiveView] = useState<"map" | "stats">("map");
   const [distanceDraft, setDistanceDraft] = useState("");
+  const [browseDate, setBrowseDate] = useState<string | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapToolbarRef = useRef<HTMLDivElement | null>(null);
@@ -624,6 +633,31 @@ export function App() {
 
   const selectedRoute = useMemo(() => findRoute(routes, selectedRouteId), [routes, selectedRouteId]);
   const treeNodes = useMemo(() => buildTree(folders, routes), [folders, routes]);
+  const latestCompletedDate = useMemo(
+    () =>
+      routes.reduce<string | null>(
+        (latest, route) => (route.completedOn && (!latest || route.completedOn > latest) ? route.completedOn : latest),
+        null
+      ),
+    [routes]
+  );
+  const dateBrowserRoutes = useMemo(
+    () => (browseDate ? routes.filter((route) => route.completedOn === browseDate && route.points.length > 0) : []),
+    [browseDate, routes]
+  );
+  const displayedRoutes = useMemo(
+    () =>
+      browseDate
+        ? dateBrowserRoutes
+        : routes.filter(
+            (route) =>
+              route.isVisible &&
+              route.points.length > 0 &&
+              isRouteShownInDisplayMode(route, routeDisplayMode) &&
+              (!showOnlySelectedRoute || route.id === selectedRouteId)
+          ),
+    [browseDate, dateBrowserRoutes, routeDisplayMode, routes, selectedRouteId, showOnlySelectedRoute]
+  );
   const isMapFullscreen = isSidebarCollapsed && isDetailsCollapsed;
 
   useEffect(() => {
@@ -642,6 +676,7 @@ export function App() {
     setExpandedFolderIds(new Set());
     setRouteMode("view");
     setShowOnlySelectedRoute(false);
+    setBrowseDate(null);
     setSelectedPointIndex(null);
     setDataStatus("请先登录");
     setIsMapReady(false);
@@ -677,8 +712,18 @@ export function App() {
   }, [selectedRoute?.id, selectedRoute?.color]);
 
   useEffect(() => {
-    if (!selectedRouteId) setShowOnlySelectedRoute(false);
-  }, [selectedRouteId]);
+    if (!selectedRoute) {
+      setShowOnlySelectedRoute(false);
+      setShowRouteDirectionArrows(false);
+    }
+  }, [selectedRoute]);
+
+  useEffect(() => {
+    if (!browseDate || !selectedRoute || selectedRoute.completedOn === browseDate) return;
+    setSelectedRouteId(null);
+    setSelectedPointIndex(null);
+    setRouteMode("view");
+  }, [browseDate, selectedRoute]);
 
   useEffect(() => {
     if (!treeContextMenu) return;
@@ -1023,39 +1068,29 @@ export function App() {
     const AMapApi = window.AMap;
     if (!isMapReady || !map || !AMapApi) return;
 
+    const displayedRouteIds = new Set(displayedRoutes.map((route) => route.id));
     overlaysRef.current.forEach((bundle, routeId) => {
-      const route = routes.find((item) => item.id === routeId);
-      if (
-        !route ||
-        !route.isVisible ||
-        !isRouteShownInDisplayMode(route, routeDisplayMode) ||
-        (showOnlySelectedRoute && route.id !== selectedRouteId)
-      ) {
+      if (!displayedRouteIds.has(routeId)) {
         map.remove([bundle.polyline, ...bundle.markers]);
         overlaysRef.current.delete(routeId);
       }
     });
 
-    routes
-      .filter(
-        (route) =>
-          route.isVisible &&
-          route.points.length > 0 &&
-          isRouteShownInDisplayMode(route, routeDisplayMode) &&
-          (!showOnlySelectedRoute || route.id === selectedRouteId)
-      )
-      .forEach((route) => {
-        const existing = overlaysRef.current.get(route.id);
-        if (existing) {
-          map.remove([existing.polyline, ...existing.markers]);
-        }
+    displayedRoutes.forEach((route) => {
+      const existing = overlaysRef.current.get(route.id);
+      if (existing) {
+        map.remove([existing.polyline, ...existing.markers]);
+      }
 
-        const points = route.points.map((point) => {
-          const converted = bd09ToGcj02(point);
-          return new AMapApi.LngLat(converted.lng, converted.lat);
-        });
-        const shouldShowDirectionArrows = showRouteDirectionArrows && route.id === selectedRouteId && points.length > 1;
-        const polyline = new AMapApi.Polyline({
+      const points = route.points.map((point) => {
+        const converted = bd09ToGcj02(point);
+        return new AMapApi.LngLat(converted.lng, converted.lat);
+      });
+      const shouldShowDirectionArrows =
+        points.length > 1 &&
+        route.id === selectedRouteId &&
+        (Boolean(browseDate) || showRouteDirectionArrows);
+      const polyline = new AMapApi.Polyline({
           path: points,
           strokeColor: route.id === selectedRouteId ? route.color : route.color,
           strokeWeight: route.id === selectedRouteId ? (shouldShowDirectionArrows ? 9 : 7) : 5,
@@ -1090,7 +1125,7 @@ export function App() {
           size: new AMapApi.Size(18, 18),
           imageSize: new AMapApi.Size(18, 18)
         });
-        const markerIndexes = canEditMarkers
+      const markerIndexes = canEditMarkers
           ? points.map((_point, index) => index)
           : isSelectedRoute
             ? points.length === 1
@@ -1139,20 +1174,19 @@ export function App() {
           }
           return marker;
         });
-        map.add([polyline, ...markers]);
-        overlaysRef.current.set(route.id, { polyline, markers });
-      });
+      map.add([polyline, ...markers]);
+      overlaysRef.current.set(route.id, { polyline, markers });
+    });
   }, [
-    routes,
+    displayedRoutes,
     selectedRouteId,
     routeMode,
-    routeDisplayMode,
-    showOnlySelectedRoute,
     selectedPointIndex,
     isMapReady,
     updateRoutePoint,
     deleteSelectedPoint,
-    showRouteDirectionArrows
+    showRouteDirectionArrows,
+    browseDate
   ]);
 
   useEffect(() => {
@@ -1206,12 +1240,13 @@ export function App() {
     map.on("rightclick", rightClickHandler);
   }, [selectedRouteId, routeMode, selectedPointIndex, isMapReady, deleteSelectedPoint]);
 
-  const focusSelectedRoute = useCallback(() => {
+  const fitRoutesOnMap = useCallback((routesToFit: RoutePlan[]) => {
     const map = mapRef.current;
     const AMapApi = window.AMap;
-    if (!map || !AMapApi || !selectedRoute?.points.length) return;
+    if (!map || !AMapApi) return;
 
-    const points = selectedRoute.points
+    const points = routesToFit
+      .flatMap((route) => route.points)
       .map((point) => bd09ToGcj02(point))
       .filter((point) => Number.isFinite(point.lng) && Number.isFinite(point.lat));
     if (points.length === 0) return;
@@ -1237,7 +1272,28 @@ export function App() {
     const toolbar = mapToolbarRef.current;
     const topPadding = toolbar ? toolbar.offsetTop + toolbar.offsetHeight + 24 : 80;
     map.setBounds(bounds, false, [topPadding, 48, 48, 48], 18);
-  }, [selectedRoute]);
+  }, []);
+
+  const focusSelectedRoute = useCallback(() => {
+    if (!selectedRoute) return;
+    fitRoutesOnMap([selectedRoute]);
+  }, [fitRoutesOnMap, selectedRoute]);
+
+  useEffect(() => {
+    if (!browseDate || !isMapReady || dateBrowserRoutes.length === 0) return;
+    fitRoutesOnMap(dateBrowserRoutes);
+  }, [browseDate, dateBrowserRoutes, fitRoutesOnMap, isMapReady]);
+
+  const toggleDateBrowser = useCallback(() => {
+    if (browseDate) {
+      setBrowseDate(null);
+      return;
+    }
+
+    setBrowseDate(latestCompletedDate ?? currentLocalDate());
+    setRouteMode("view");
+    setSelectedPointIndex(null);
+  }, [browseDate, latestCompletedDate]);
 
   const toggleMapFullscreen = useCallback(() => {
     if (isMapFullscreen) {
@@ -1796,6 +1852,46 @@ export function App() {
             <BarChart3 size={16} />
             出行统计
           </button>
+          <button
+            type="button"
+            className={browseDate ? "active" : ""}
+            aria-pressed={Boolean(browseDate)}
+            onClick={toggleDateBrowser}
+          >
+            <CalendarDays size={16} />
+            {browseDate ? "退出日期浏览" : "按日期浏览"}
+          </button>
+          {browseDate ? (
+            <div className="date-browser-controls" aria-label="按日期浏览路线">
+              <button
+                className="date-step-button"
+                type="button"
+                title="上一天"
+                aria-label="上一天"
+                onClick={() => setBrowseDate((current) => (current ? shiftDate(current, -1) : current))}
+              >
+                <ChevronLeft size={17} />
+              </button>
+              <input
+                type="date"
+                aria-label="浏览日期"
+                value={browseDate}
+                onChange={(event) => event.target.value && setBrowseDate(event.target.value)}
+              />
+              <button
+                className="date-step-button"
+                type="button"
+                title="下一天"
+                aria-label="下一天"
+                onClick={() => setBrowseDate((current) => (current ? shiftDate(current, 1) : current))}
+              >
+                <ChevronRight size={17} />
+              </button>
+              <span className={`date-route-count ${dateBrowserRoutes.length === 0 ? "empty" : ""}`}>
+                {dateBrowserRoutes.length > 0 ? `${dateBrowserRoutes.length} 条线路` : "当天没有已完成路线"}
+              </span>
+            </div>
+          ) : null}
           {mapStatus !== "地图已加载" ? <span className="map-status-text">{mapStatus}</span> : null}
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />
@@ -1805,24 +1901,35 @@ export function App() {
             type="button"
             className={showOnlySelectedRoute ? "active" : ""}
             aria-pressed={showOnlySelectedRoute}
-            disabled={!selectedRoute}
-            title={selectedRoute ? "切换是否只显示当前选中的路线" : "请先选择一条路线"}
+            disabled={!selectedRoute || Boolean(browseDate)}
+            title={
+              browseDate
+                ? "日期浏览会显示当天全部路线"
+                : selectedRoute
+                  ? "切换是否只显示当前选中的路线"
+                  : "请先选择一条路线"
+            }
             onClick={() => setShowOnlySelectedRoute((current) => !current)}
           >
             <Eye size={16} />
             只显示选中路线
           </button>
           <button
-            className="bulk-complete-button"
             type="button"
-            title={routeMode === "edit" ? "请先保存或退出路线编辑" : "按名称、颜色和点位批量标记未完成路线"}
-            disabled={routeMode === "edit" || Boolean(bulkCompletionProgress)}
-            onClick={completeAllUnfinishedRoutes}
+            className={`icon-toggle-button ${showRouteDirectionArrows ? "active" : ""}`}
+            aria-label="显示方向箭头"
+            aria-pressed={showRouteDirectionArrows}
+            disabled={!selectedRoute || Boolean(browseDate)}
+            title={
+              browseDate
+                ? "日期浏览会为选中路线显示方向"
+                : selectedRoute
+                  ? "显示或隐藏当前选中路线的方向箭头"
+                  : "请先选择一条路线"
+            }
+            onClick={() => setShowRouteDirectionArrows((current) => !current)}
           >
-            <CheckCheck size={16} />
-            {bulkCompletionProgress
-              ? `处理中 ${bulkCompletionProgress.current}/${bulkCompletionProgress.total}`
-              : "批量标记已完成"}
+            <ArrowRight size={16} />
           </button>
           <span className={`mode-pill ${routeMode}`}>{routeMode === "edit" ? "编辑中" : "显示模式"}</span>
         </div>
@@ -1834,6 +1941,8 @@ export function App() {
               role="radio"
               aria-checked={routeDisplayMode === "walking"}
               className={routeDisplayMode === "walking" ? "active" : ""}
+              disabled={Boolean(browseDate)}
+              title={browseDate ? "日期浏览会显示当天全部出行方式" : undefined}
               onClick={() => setRouteDisplayMode("walking")}
             >
               走路
@@ -1843,6 +1952,8 @@ export function App() {
               role="radio"
               aria-checked={routeDisplayMode === "transit"}
               className={routeDisplayMode === "transit" ? "active" : ""}
+              disabled={Boolean(browseDate)}
+              title={browseDate ? "日期浏览会显示当天全部出行方式" : undefined}
               onClick={() => setRouteDisplayMode("transit")}
             >
               公交
@@ -1852,6 +1963,8 @@ export function App() {
               role="radio"
               aria-checked={routeDisplayMode === "all"}
               className={routeDisplayMode === "all" ? "active" : ""}
+              disabled={Boolean(browseDate)}
+              title={browseDate ? "日期浏览会显示当天全部出行方式" : undefined}
               onClick={() => setRouteDisplayMode("all")}
             >
               走路和公交
@@ -2061,14 +2174,6 @@ export function App() {
                 />
               </div>
             </div>
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={showRouteDirectionArrows}
-                onChange={(event) => setShowRouteDirectionArrows(event.target.checked)}
-              />
-              <span>显示方向箭头</span>
-            </label>
             <div className="route-summary">
               <span>{selectedRoute.points.length}</span>
               <div>
@@ -2079,8 +2184,8 @@ export function App() {
                 className="optimize-points-button"
                 type="button"
                 onClick={optimizeSelectedRoutePoints}
-                disabled={isSaving || selectedRoute.points.length < 3}
-                title="使用 10 米容差保留关键转弯点"
+                disabled={Boolean(browseDate) || isSaving || selectedRoute.points.length < 3}
+                title={browseDate ? "退出日期浏览后可优化节点" : "使用 10 米容差保留关键转弯点"}
               >
                 优化节点数
               </button>
@@ -2091,7 +2196,13 @@ export function App() {
                 {isSaving ? "保存中" : "保存"}
               </button>
             ) : (
-              <button className="save-button" type="button" onClick={() => setRouteMode("edit")}>
+              <button
+                className="save-button"
+                type="button"
+                disabled={Boolean(browseDate)}
+                title={browseDate ? "退出日期浏览后可编辑路线" : undefined}
+                onClick={() => setRouteMode("edit")}
+              >
                 <Edit3 size={18} />
                 编辑路线
               </button>

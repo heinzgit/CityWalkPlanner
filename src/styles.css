@@ -566,9 +566,57 @@ button {
   background: #f7fafd;
 }
 
-.map-toolbar button:disabled {
+.map-toolbar button:disabled,
+.map-control-group button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.map-control-group button:disabled:hover {
+  border-color: #cbd8e8;
+  background: #ffffff;
+}
+
+.map-toolbar .icon-toggle-button {
+  width: 34px;
+  padding: 0;
+}
+
+.date-browser-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding-left: 10px;
+  border-left: 1px solid #dce3ee;
+}
+
+.map-toolbar .date-step-button {
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.date-browser-controls input[type="date"] {
+  width: 136px;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid #cbd8e8;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #1b3558;
+  font: inherit;
+}
+
+.date-route-count {
+  white-space: nowrap;
+  color: #315f3f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.date-route-count.empty {
+  color: #8a5a00;
 }
 
 .map-toolbar .bulk-complete-button {
@@ -1715,6 +1763,19 @@ button {
 
   .route-display-label {
     display: none;
+  }
+
+  .date-browser-controls {
+    width: 100%;
+    padding-top: 6px;
+    padding-left: 0;
+    border-top: 1px solid #dce3ee;
+    border-left: 0;
+  }
+
+  .date-browser-controls input[type="date"] {
+    flex: 1;
+    min-width: 0;
   }
 
   .map-controls-top-right {
