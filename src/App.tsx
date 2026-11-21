@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import { loadAmap } from "./amap";
-import { bd09ToGcj02, gcj02ToBd09 } from "./coord";
+import { bd09ToGcj02, gcj02ToBd09, wgs84ToGcj02 } from "./coord";
 import { createFolderKmz, createRouteKmz, parseKmzFile } from "./kmz";
 import { simplifyRoutePoints } from "./routeSimplify";
 import { TravelStats } from "./TravelStats";
@@ -353,6 +353,7 @@ function TreeView({
   nodes,
   selectedRouteId,
   onSelectRoute,
+  onClearRouteSelection,
   onToggleVisibility,
   onCreateFolder,
   onCreateRoute,
@@ -379,6 +380,7 @@ function TreeView({
   nodes: TreeNode[];
   selectedRouteId: string | null;
   onSelectRoute: (routeId: string) => void;
+  onClearRouteSelection: () => void;
   onToggleVisibility: (node: TreeNode) => void;
   onCreateFolder: (parentId: string | null) => void;
   onCreateRoute: (folderId: string | null) => void;
@@ -405,7 +407,16 @@ function TreeView({
   const isTopLevelFolder = level === 0;
 
   return (
-    <div className="tree-list">
+    <div
+      className="tree-list"
+      onClick={
+        level === 0
+          ? (event) => {
+              if (!(event.target as HTMLElement).closest(".tree-row")) onClearRouteSelection();
+            }
+          : undefined
+      }
+    >
       {nodes.map((node) => (
         <div key={`${node.type}-${node.id}`}>
           <div
@@ -538,6 +549,7 @@ function TreeView({
               nodes={node.children}
               selectedRouteId={selectedRouteId}
               onSelectRoute={onSelectRoute}
+              onClearRouteSelection={onClearRouteSelection}
               onToggleVisibility={onToggleVisibility}
               onCreateFolder={onCreateFolder}
               onCreateRoute={onCreateRoute}
@@ -770,7 +782,9 @@ export function App() {
     const payload = await api.getTree();
     setFolders(payload.folders);
     setRoutes(payload.routes);
-    setSelectedRouteId((current) => current ?? payload.routes[0]?.id ?? null);
+    setSelectedRouteId((current) =>
+      current && payload.routes.some((route) => route.id === current) ? current : null
+    );
     setDataStatus(payload.routes.length ? "已加载路线" : "还没有路线");
   }, []);
 
@@ -952,6 +966,21 @@ export function App() {
         updateMapLayerVisibility(layers, mapTypeMode, showSatelliteRoadNet);
         setMapStatus("地图已加载");
         setIsMapReady(true);
+
+        window.navigator.geolocation?.getCurrentPosition(
+          (position) => {
+            if (disposed || mapRef.current !== map) return;
+            const deviceCenter = wgs84ToGcj02({
+              lng: position.coords.longitude,
+              lat: position.coords.latitude
+            });
+            map.setZoomAndCenter(15, [deviceCenter.lng, deviceCenter.lat]);
+          },
+          () => {
+            // Keep the default center when location permission is unavailable or denied.
+          },
+          { enableHighAccuracy: true, timeout: 10_000, maximumAge: 300_000 }
+        );
       })
       .catch((caught) => {
         setMapStatus("地图加载失败");
@@ -1732,6 +1761,11 @@ export function App() {
           selectedRouteId={selectedRouteId}
           onSelectRoute={(routeId) => {
             setSelectedRouteId(routeId);
+            setSelectedPointIndex(null);
+            setRouteMode("view");
+          }}
+          onClearRouteSelection={() => {
+            setSelectedRouteId(null);
             setSelectedPointIndex(null);
             setRouteMode("view");
           }}
