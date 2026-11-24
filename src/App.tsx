@@ -726,7 +726,6 @@ export function App() {
   useEffect(() => {
     if (!selectedRoute) {
       setShowOnlySelectedRoute(false);
-      setShowRouteDirectionArrows(false);
     }
   }, [selectedRoute]);
 
@@ -1177,14 +1176,16 @@ export function App() {
           if (isCurrentPoint && !endpointRole) {
             marker.setIcon(yellowIcon);
           }
-          if (canEditMarkers) {
-            marker.on("click", () => {
-              skipNextMapClickRef.current = true;
-              window.setTimeout(() => {
-                skipNextMapClickRef.current = false;
-              }, 0);
+          marker.on("click", () => {
+            skipNextMapClickRef.current = true;
+            window.setTimeout(() => {
+              skipNextMapClickRef.current = false;
+            }, 0);
+            if (canEditMarkers) {
               setSelectedPointIndex(index);
-            });
+            }
+          });
+          if (canEditMarkers) {
             marker.on("rightclick", () => {
               // Marker right-clicks can also reach the map listener below.
               skipNextMapRightClickRef.current = true;
@@ -1229,11 +1230,14 @@ export function App() {
       map.off("rightclick", rightClickHandlerRef.current);
       rightClickHandlerRef.current = null;
     }
-    if (routeMode !== "edit") return;
-
     const handler: AMap.EventHandler = (event) => {
       if (skipNextMapClickRef.current) {
         skipNextMapClickRef.current = false;
+        return;
+      }
+      if (routeMode === "view") {
+        setSelectedRouteId(null);
+        setSelectedPointIndex(null);
         return;
       }
       const point = event.lnglat;
@@ -1257,6 +1261,8 @@ export function App() {
 
     clickHandlerRef.current = handler;
     map.on("click", handler);
+
+    if (routeMode !== "edit") return;
 
     const rightClickHandler: AMap.EventHandler = () => {
       if (skipNextMapRightClickRef.current) {
@@ -1927,6 +1933,9 @@ export function App() {
             </div>
           ) : null}
           {mapStatus !== "地图已加载" ? <span className="map-status-text">{mapStatus}</span> : null}
+          <span className={`mode-pill ${routeMode}`}>{routeMode === "edit" ? "编辑中" : "显示模式"}</span>
+        </div>
+        <div className="map-controls-bottom-left map-control-group" role="group" aria-label="选中路线操作">
           <button type="button" onClick={focusSelectedRoute}>
             <LocateFixed size={16} />
             聚焦路线
@@ -1965,7 +1974,6 @@ export function App() {
           >
             <ArrowRight size={16} />
           </button>
-          <span className={`mode-pill ${routeMode}`}>{routeMode === "edit" ? "编辑中" : "显示模式"}</span>
         </div>
         <div className="map-controls-top-right map-control-group">
           <div className="route-display-switch" role="radiogroup" aria-label="显示线路">

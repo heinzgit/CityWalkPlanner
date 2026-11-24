@@ -516,6 +516,13 @@ button {
   max-width: calc(100% - 28px);
 }
 
+.map-controls-bottom-left {
+  left: 14px;
+  bottom: 14px;
+  flex-wrap: wrap;
+  max-width: calc(100% - 28px);
+}
+
 .map-controls-bottom-right {
   right: 14px;
   bottom: 14px;
@@ -577,7 +584,7 @@ button {
   background: #ffffff;
 }
 
-.map-toolbar .icon-toggle-button {
+.map-control-group .icon-toggle-button {
   width: 34px;
   padding: 0;
 }
@@ -1756,6 +1763,11 @@ button {
 }
 
 @media (max-width: 560px) {
+  .map-controls-bottom-left {
+    bottom: 78px;
+    gap: 6px;
+  }
+
   .map-status-text,
   .map-toolbar .mode-pill {
     display: none;
